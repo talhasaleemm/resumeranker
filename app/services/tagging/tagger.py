@@ -63,7 +63,7 @@ def assign_tags(candidate_data: Dict[str, Any]) -> Tuple[List[str], Dict[str, Li
         if len(signals) >= EVIDENCE_THRESHOLD:
             assigned_tags.append(tag)
             
-    # Full-stack inference rule
+    # Full-stack inference rule: when both frontend and backend are present, append 'full-stack' so all three tags appear in the final output.
     if "frontend" in assigned_tags and "backend" in assigned_tags:
         assigned_tags.append("full-stack")
         evidence_log["full-stack"] = ["Inferred from having both 'frontend' and 'backend' tags"]

@@ -42,6 +42,26 @@ def test_assign_tags_bioinformatics():
     assert "frontend" not in tags
     assert len(evidence["bioinformatics"]) >= 2
 
+def test_assign_tags_data_science():
+    data = {
+        "skills": ["pandas", "numpy", "sql"],
+        "projects": ["Performed data analysis and statistics on large datasets using Tableau"]
+    }
+    tags, evidence = assign_tags(data)
+    assert "data science" in tags
+    assert "AI/ML" not in tags
+    assert len(evidence["data science"]) >= 2
+
+def test_assign_tags_ai_ml():
+    data = {
+        "skills": ["pytorch", "tensorflow", "python"],
+        "experience": ["Trained deep learning and NLP models using Huggingface"]
+    }
+    tags, evidence = assign_tags(data)
+    assert "AI/ML" in tags
+    assert "data science" not in tags
+    assert len(evidence["AI/ML"]) >= 2
+
 def test_assign_tags_ambiguous_insufficient_evidence():
     data = {
         "skills": ["python"],  # only 1 signal for backend
