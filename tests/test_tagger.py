@@ -79,3 +79,13 @@ def test_assign_tags_empty_no_tags():
     tags, evidence = assign_tags(data)
     assert tags == []
     assert not evidence
+
+def test_evidence_logs_original_candidate_skill_string():
+    data = {
+        "skills": ["REACT", "nOdE"],
+        "experience": []
+    }
+    tags, evidence = assign_tags(data)
+    
+    assert "skill: REACT" in evidence.get("frontend", [])
+    assert "skill: nOdE" in evidence.get("backend", [])

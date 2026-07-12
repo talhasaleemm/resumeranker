@@ -47,8 +47,9 @@ def assign_tags(candidate_data: Dict[str, Any]) -> Tuple[List[str], Dict[str, Li
             kw_norm = normalize_skill(kw)
             
             # Check explicit skills
-            if kw_norm in norm_skills or kw.lower() in norm_skills:
-                found_signals.add(f"skill: {kw}")
+            for orig_skill, n_skill in zip(skills, norm_skills):
+                if n_skill == kw_norm or n_skill == kw.lower():
+                    found_signals.add(f"skill: {orig_skill}")
             
             # Check text corpus (experience/projects)
             if re.search(r'\b' + re.escape(kw.lower()) + r'\b', text_corpus):
