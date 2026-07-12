@@ -139,7 +139,7 @@ def test_match_endpoint_single_candidate_without_overlap():
         "candidates": [
             {
                 "id": "cand_only",
-                "raw_text": "I am a Java backend developer.",
+                "raw_text": "I am a Java backend engineer.",
                 "skills": ["java"]
             }
         ],
