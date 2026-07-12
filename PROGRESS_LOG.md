@@ -104,9 +104,13 @@ tests/test_parser.py::TestNERPipeline::test_json_serializable PASSED
 4. **`scikit-learn` split on hyphen**: Skill separator regex was replacing all hyphens. Fixed to only replace em/en dashes surrounded by spaces; preserves internal hyphens.
 5. **Year regex matched `20` prefix**: `_YEAR_RE.findall()` was returning just the prefix group. Fixed by filtering to `len(y) == 4`.
 
+### Tech Debt (Flagged for Phase 6 QA)
+1. **Realistic / Messy Resumes**: Current sample resumes are perfectly structured. Needs tests for multi-column layouts, resume-as-table, scanned/image-based PDFs, and resumes missing whole sections.
+2. **False Positives**: Added 3 tests to ensure company names don't leak into skills, certifications don't leak into projects, and skills aren't full sentences. Should continue expanding negative-content tests.
+
 ### Git
 - Branch: `main`
-- Commit: `phase-1: spaCy NER pipeline, PDF/DOCX parsers, 22 tests passing`
+- Commit: `phase-1: spaCy NER pipeline, PDF/DOCX parsers, 27 tests passing`
 
 ---
 

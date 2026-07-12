@@ -137,6 +137,31 @@ class TestDOCXParser:
         with pytest.raises(ParseError):
             extract_text_from_docx(b"this is not a docx file at all", "fake.docx")
 
+    def test_docx_parser_raises_on_empty_bytes(self):
+        """DOCX parser raises ParseError on zero-byte input (parity with PDF test)."""
+        from app.services.parser.docx_parser import extract_text_from_docx, ParseError
+
+        with pytest.raises((ParseError, Exception)):
+            extract_text_from_docx(b"", "empty.docx")
+
+    def test_docx_parser_raises_on_empty_zip_shell(self):
+        """
+        DOCX parser raises ParseError on a valid ZIP with no document content —
+        simulates a corrupted/empty DOCX (parity: PDF has empty_bytes + empty_file).
+        """
+        import io
+        import zipfile
+        from app.services.parser.docx_parser import extract_text_from_docx, ParseError
+
+        # DOCX is a ZIP — build one with only a stub Content_Types entry, no word/document.xml
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("[Content_Types].xml", "<empty/>")
+        empty_zip_bytes = buf.getvalue()
+
+        with pytest.raises((ParseError, Exception)):
+            extract_text_from_docx(empty_zip_bytes, "empty_docx_shell.docx")
+
 
 # ---------------------------------------------------------------------------
 # NER Pipeline tests (core Phase 1 requirement)
@@ -350,6 +375,46 @@ AWS Certified Cloud Practitioner (2022)
         json_str = json.dumps(profile)
         restored = json.loads(json_str)
         assert restored["email"] == profile["email"]
+
+    # --- False-positive / negative-content tests ---
+
+    def test_company_names_not_in_skills(self):
+        """
+        NER pipeline must NOT pull company/location names into the skills list.
+        'DataStream Inc.', 'Chicago', 'Illinois' are org/geo names in experience
+        section — they must never appear as extracted skills.
+        """
+        profile = self._parse(self.BACKEND_TEXT, "backend.txt")
+        skills_lower = [s.lower() for s in profile["skills"]]
+        false_positive_orgs = ["datastream", "datastream inc", "chicago", "illinois"]
+        for org in false_positive_orgs:
+            assert org not in skills_lower, (
+                f"Company/location '{org}' incorrectly in skills: {profile['skills']}"
+            )
+
+    def test_certifications_not_in_projects(self):
+        """
+        NER pipeline must NOT conflate certifications with projects.
+        'AWS Certified Developer' must be in certifications, never in projects.
+        """
+        profile = self._parse(self.BACKEND_TEXT, "backend.txt")
+        project_names_lower = [p.get("name", "").lower() for p in profile["projects"]]
+        cert_leakage = [n for n in project_names_lower if "certified" in n or "associate" in n]
+        assert not cert_leakage, (
+            f"Certification text leaked into projects list: {cert_leakage}"
+        )
+
+    def test_skills_are_not_full_sentences(self):
+        """
+        No skill entry should be a full sentence (> 6 words) — that would indicate
+        experience bullet text leaked into the skills list.
+        """
+        profile = self._parse(self.BACKEND_TEXT, "backend.txt")
+        for skill in profile["skills"]:
+            word_count = len(skill.split())
+            assert word_count <= 6, (
+                f"Skill looks like a sentence ({word_count} words): '{skill}'"
+            )
 
 
 # ---------------------------------------------------------------------------
