@@ -7,6 +7,7 @@ from app.config import get_settings
 from app.services.matching.tfidf_engine import compute_tfidf_scores
 from app.services.matching.bm25_engine import compute_normalized_bm25_scores
 from app.services.normalization.normalizer import normalize_skills_list
+from app.services.tagging.tagger import assign_tags
 
 
 def compute_skill_overlap(job_skills: List[str], candidate_skills: List[str]) -> float:
@@ -90,12 +91,16 @@ def score_candidates(
         matched_skills = list(set(norm_job_skills).intersection(set(norm_cand_skills)))
         missing_skills = list(set(norm_job_skills).difference(set(norm_cand_skills)))
         
+        assigned_tags, tag_evidence = assign_tags(candidate)
+        
         explanation = {
             "tfidf_contribution": round(tf_score * settings.tfidf_weight * 100, 2),
             "bm25_contribution": round(bm_score * settings.bm25_weight * 100, 2),
             "skill_contribution": round(skill_score * settings.skill_weight * 100, 2),
             "matched_skills": matched_skills,
-            "missing_skills": missing_skills
+            "missing_skills": missing_skills,
+            "tags_detected": assigned_tags,
+            "tag_evidence": tag_evidence
         }
         
         results.append({

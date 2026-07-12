@@ -36,9 +36,16 @@ def test_match_endpoint_success():
     assert len(data["matches"]) == 2
     
     # cand_1 should score higher
-    assert data["matches"][0]["candidate_id"] == "cand_1"
-    assert "final_score" in data["matches"][0]
-    assert "explanation_log" in data["matches"][0]
+    match = data["matches"][0]
+    assert match["candidate_id"] == "cand_1"
+    assert "final_score" in match
+    assert "explanation_log" in match
+    
+    explanation = match["explanation_log"]
+    assert "tags_detected" in explanation
+    assert "tag_evidence" in explanation
+    assert isinstance(explanation["tags_detected"], list)
+    assert isinstance(explanation["tag_evidence"], dict)
 
 
 def test_match_endpoint_weights_not_summing_to_1():
