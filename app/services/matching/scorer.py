@@ -6,7 +6,7 @@ from typing import List, Dict, Any
 from app.config import get_settings
 from app.services.matching.tfidf_engine import compute_tfidf_scores
 from app.services.matching.bm25_engine import compute_normalized_bm25_scores
-from app.services.normalization.normalizer import normalize_skills_list
+from app.services.normalization.normalizer import normalize_skills_list, normalize_skill
 from app.services.tagging.tagger import assign_tags
 
 
@@ -86,10 +86,21 @@ def score_candidates(
         final_score_100 = round(raw_final * 100, 2)
         
         # Explanation Log for transparency
-        norm_job_skills = normalize_skills_list(job_required_skills)
-        norm_cand_skills = normalize_skills_list(cand_skills)
-        matched_skills = list(set(norm_job_skills).intersection(set(norm_cand_skills)))
-        missing_skills = list(set(norm_job_skills).difference(set(norm_cand_skills)))
+        norm_job_skills_set = set(normalize_skills_list(job_required_skills))
+        norm_cand_skills_set = set(normalize_skills_list(cand_skills))
+        
+        matched_skills = []
+        for orig_cand_skill in cand_skills:
+            if normalize_skill(orig_cand_skill) in norm_job_skills_set:
+                matched_skills.append(orig_cand_skill)
+                
+        missing_skills = []
+        for orig_job_skill in job_required_skills:
+            if normalize_skill(orig_job_skill) not in norm_cand_skills_set:
+                missing_skills.append(orig_job_skill)
+                
+        matched_skills = sorted(list(set(matched_skills)))
+        missing_skills = sorted(list(set(missing_skills)))
         
         assigned_tags, tag_evidence = assign_tags(candidate)
         

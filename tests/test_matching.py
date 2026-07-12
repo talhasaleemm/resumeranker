@@ -92,4 +92,4 @@ class TestScorer:
         # Check explanation log
         expl = top_cand["explanation_log"]
         assert "python" in expl["matched_skills"]
-        assert "postgresql" in expl["missing_skills"]
+        assert "PostgreSQL" in expl["missing_skills"]
