@@ -108,9 +108,23 @@ tests/test_parser.py::TestNERPipeline::test_json_serializable PASSED
 1. **Realistic / Messy Resumes**: Current sample resumes are perfectly structured. Needs tests for multi-column layouts, resume-as-table, scanned/image-based PDFs, and resumes missing whole sections.
 2. **False Positives**: Added 3 tests to ensure company names don't leak into skills, certifications don't leak into projects, and skills aren't full sentences. Should continue expanding negative-content tests.
 
+---
+
+## Phase 2: Matching Engine (Completed)
+
+**Objective**: Define standard taxonomy for skills, implement TF-IDF and BM25 scoring engines, and combine them into a single `score_candidates` pipeline exposed via `POST /api/v1/matches/`.
+
+**What was done**:
+1. **Skill Taxonomy & Normalization**: Created `skill_taxonomy.json` mapping common aliases (e.g., `js` -> `javascript`) and implemented `normalizer.py` to clean and canonicalize skills.
+2. **TF-IDF Engine**: Implemented `tfidf_engine.py` using `scikit-learn`'s `TfidfVectorizer` to calculate cosine similarity between JD and resumes.
+3. **BM25 Engine**: Implemented `bm25_engine.py` using `rank_bm25`'s `BM25Okapi` and added min-max normalization to bound scores between 0.0 and 1.0.
+4. **Match Scorer**: Implemented `scorer.py` that computes exact skill overlap (Jaccard-like) and aggregates it with TF-IDF and BM25 scores using configurable weights. Outputs a 0-100 `final_score` and an `explanation_log`.
+5. **API Endpoint**: Updated `app/api/v1/matches.py` to expose `POST /api/v1/matches/`, allowing dynamic weight overrides.
+6. **Tests**: Added `tests/test_matching.py` providing full coverage for the normalizer, TF-IDF, BM25, and matching pipeline.
+
 ### Git
 - Branch: `main`
-- Commit: `phase-1: spaCy NER pipeline, PDF/DOCX parsers, 27 tests passing`
+- Commit: `phase-2: TF-IDF, BM25, Match Scorer pipeline, 7 matching tests passing`
 
 ---
 
