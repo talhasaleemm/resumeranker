@@ -13,33 +13,40 @@ pytestmark = pytest.mark.asyncio
 async def test_persistence_new_candidate_insert():
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
     from app.config import get_settings
+    import uuid
+    unique_email = f"new_test1_{uuid.uuid4()}@example.com"
     test_engine = create_async_engine(get_settings().database_url)
     async with AsyncSession(test_engine) as db:
-        c1 = await ingest_candidate(db, raw_text="Developer with new_test1@example.com", filename="res1.pdf")
+        c1 = await ingest_candidate(db, raw_text=f"Developer with {unique_email}", filename="res1.pdf")
         assert c1.id is not None
-        assert c1.email == "new_test1@example.com"
+        assert c1.email == unique_email
     await test_engine.dispose()
 
 async def test_persistence_email_match_update():
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
     from app.config import get_settings
+    import uuid
+    unique_email = f"update_test_{uuid.uuid4()}@example.com"
     test_engine = create_async_engine(get_settings().database_url)
     async with AsyncSession(test_engine) as db:
-        c1 = await ingest_candidate(db, raw_text="Developer with update_test@example.com", filename="res1.pdf")
+        c1 = await ingest_candidate(db, raw_text=f"Developer with {unique_email}", filename="res1.pdf")
         original_id = c1.id
-        c2 = await ingest_candidate(db, raw_text="Senior Developer with update_test@example.com", filename="res2.pdf")
+        c2 = await ingest_candidate(db, raw_text=f"Senior Developer with {unique_email}", filename="res2.pdf")
         assert c2.id == original_id
-        assert c2.raw_text == "Senior Developer with update_test@example.com"
+        assert c2.raw_text == f"Senior Developer with {unique_email}"
     await test_engine.dispose()
 
 async def test_persistence_raw_text_hash_fallback_match():
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
     from app.config import get_settings
+    import uuid
+    unique_text = f"Identical raw text without email fallback {uuid.uuid4()}"
+    
     test_engine = create_async_engine(get_settings().database_url)
     async with AsyncSession(test_engine) as db:
-        c3 = await ingest_candidate(db, raw_text="Identical raw text without email fallback", filename="res3.pdf")
+        c3 = await ingest_candidate(db, raw_text=unique_text, filename="res3.pdf")
         c3_id = c3.id
-        c4 = await ingest_candidate(db, raw_text="Identical raw text without email fallback", filename="res4.pdf")
+        c4 = await ingest_candidate(db, raw_text=unique_text, filename="res4.pdf")
         assert c4.id == c3_id
     await test_engine.dispose()
 
@@ -52,9 +59,12 @@ async def test_persistence_concurrent_duplicate_rejection():
     # One should succeed, the other should fail with IntegrityError because
     # they try to insert identical unique constraints (email or raw_text_hash).
     
+    import uuid
+    unique_email = f"concurrent_{uuid.uuid4()}@example.com"
+    
     async def try_ingest():
         async with AsyncSession(test_engine) as db:
-            await ingest_candidate(db, raw_text="Developer with concurrent_test@example.com", filename="res1.pdf")
+            await ingest_candidate(db, raw_text=f"Developer with {unique_email}", filename="res1.pdf")
             await db.commit()
             
     # We must catch the IntegrityError in the failing task
