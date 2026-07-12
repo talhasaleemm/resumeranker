@@ -132,11 +132,32 @@ tests/test_parser.py::TestNERPipeline::test_json_serializable PASSED
 
 ---
 
-## Phase 3 — Auto-tagging + Explainable Match Logging (UPCOMING)
+## Phase 3 — Auto-tagging + Explainable Match Logging
+
+**Status:** ✅ Complete  
+**Date:** 2026-07-13
+
+### What was built
+- Auto-tagging module (`tagger.py`) parsing structural Phase 1 output (skills, experience).
+- Categories: backend, frontend, full-stack, data science, AI/ML, bioinformatics.
+- Explainable logging showing exact original candidate/job skill strings that matched.
+- Dedicated test coverage added to ensure non-overlap between conflicting domains (e.g., Data Science vs AI/ML).
 
 ---
 
-## Phase 4 — FastAPI Endpoints + PostgreSQL Persistence (UPCOMING)
+## Phase 4 — FastAPI Endpoints + PostgreSQL Persistence
+
+**Status:** ✅ Complete  
+**Date:** 2026-07-13
+
+### What was built
+- Designed and implemented relational schema (candidates, jobs, match_results).
+- Candidates and Jobs: mutable entities. MatchResults: immutable append-only history.
+- Partial unique indexes added to Candidate table on `email` and `raw_text_hash` to handle concurrent duplicate ingestion.
+- `MatchResult` constraints added for 0.0-1.0 checks on BM25, TF-IDF, and Skill scores.
+- Test infrastructure updated: transitioned to using `httpx.Client` directly against the containerized FastAPI port `8000` to prevent event loop connection pool clashes.
+- Dedup fallbacks explicitly tested across four separated tests (`test_persistence_new_candidate_insert`, `test_persistence_email_match_update`, `test_persistence_raw_text_hash_fallback_match`, `test_persistence_concurrent_duplicate_rejection`).
+
 
 ---
 
