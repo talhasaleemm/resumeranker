@@ -1,0 +1,103 @@
+"""
+app/services/parser/pdf_parser.py — PDF → raw text extractor.
+
+Uses pdfplumber as primary (best layout preservation for resumes),
+falls back to PyMuPDF (fitz) if pdfplumber fails or returns empty text.
+
+Explicitly does NOT fake success — raises ParseError if neither library
+can extract usable text from the file.
+"""
+import io
+import logging
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+
+class ParseError(Exception):
+    """Raised when a file cannot be parsed into usable text."""
+    pass
+
+
+def extract_text_from_pdf(file_bytes: bytes, filename: str = "unknown.pdf") -> str:
+    """
+    Extract raw text from a PDF file.
+
+    Args:
+        file_bytes: Raw bytes of the PDF file.
+        filename: Original filename (used for logging only).
+
+    Returns:
+        Extracted text as a single string with page breaks preserved.
+
+    Raises:
+        ParseError: If neither pdfplumber nor PyMuPDF can extract usable text.
+    """
+    text = _try_pdfplumber(file_bytes, filename)
+    if text and len(text.strip()) > 50:
+        logger.info("pdfplumber extracted %d chars from '%s'", len(text), filename)
+        return text
+
+    logger.warning(
+        "pdfplumber returned insufficient text (%d chars) from '%s', trying PyMuPDF",
+        len(text) if text else 0,
+        filename,
+    )
+    text = _try_pymupdf(file_bytes, filename)
+    if text and len(text.strip()) > 50:
+        logger.info("PyMuPDF extracted %d chars from '%s'", len(text), filename)
+        return text
+
+    raise ParseError(
+        f"Could not extract usable text from '{filename}'. "
+        "The file may be a scanned image PDF (OCR not supported), "
+        "encrypted, or corrupted."
+    )
+
+
+def _try_pdfplumber(file_bytes: bytes, filename: str) -> str:
+    """Attempt extraction with pdfplumber."""
+    try:
+        import pdfplumber
+
+        pages_text: list[str] = []
+        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+            if len(pdf.pages) == 0:
+                logger.warning("pdfplumber: '%s' has 0 pages", filename)
+                return ""
+            for i, page in enumerate(pdf.pages):
+                page_text = page.extract_text(
+                    x_tolerance=2,
+                    y_tolerance=2,
+                    layout=True,
+                    x_density=7.25,
+                    y_density=13,
+                ) or ""
+                pages_text.append(page_text)
+                logger.debug("pdfplumber page %d: %d chars", i + 1, len(page_text))
+        return "\n\n".join(pages_text)
+
+    except Exception as exc:
+        logger.warning("pdfplumber failed on '%s': %s", filename, exc)
+        return ""
+
+
+def _try_pymupdf(file_bytes: bytes, filename: str) -> str:
+    """Attempt extraction with PyMuPDF (fitz)."""
+    try:
+        import fitz  # PyMuPDF
+
+        pages_text: list[str] = []
+        with fitz.open(stream=file_bytes, filetype="pdf") as doc:
+            if doc.page_count == 0:
+                logger.warning("PyMuPDF: '%s' has 0 pages", filename)
+                return ""
+            for i, page in enumerate(doc):
+                page_text = page.get_text("text") or ""
+                pages_text.append(page_text)
+                logger.debug("PyMuPDF page %d: %d chars", i + 1, len(page_text))
+        return "\n\n".join(pages_text)
+
+    except Exception as exc:
+        logger.warning("PyMuPDF failed on '%s': %s", filename, exc)
+        return ""
