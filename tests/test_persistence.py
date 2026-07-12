@@ -55,6 +55,7 @@ async def test_persistence_concurrent_duplicate_rejection():
     async def try_ingest():
         async with AsyncSession(test_engine) as db:
             await ingest_candidate(db, raw_text="Developer with concurrent_test@example.com", filename="res1.pdf")
+            await db.commit()
             
     # We must catch the IntegrityError in the failing task
     results = await asyncio.gather(try_ingest(), try_ingest(), return_exceptions=True)
