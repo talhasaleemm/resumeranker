@@ -93,3 +93,28 @@ class TestScorer:
         expl = top_cand["explanation_log"]
         assert "python" in expl["matched_skills"]
         assert "PostgreSQL" in expl["missing_skills"]
+
+    def test_matched_and_missing_skills_preserve_literal_case(self):
+        job_desc = "Testing literal preservation."
+        job_skills = ["Node.js", "React.js"]
+        
+        candidates = [
+            {
+                "id": "cand_literal",
+                "raw_text": "I am a developer.",
+                "skills": ["NodeJS", "VueJS"]
+            }
+        ]
+        
+        results = score_candidates(job_desc, job_skills, candidates)
+        assert len(results) == 1
+        
+        expl = results[0]["explanation_log"]
+        
+        # Check matched_skills uses candidate's literal string
+        assert "NodeJS" in expl["matched_skills"]
+        assert "node.js" not in expl["matched_skills"]
+        
+        # Check missing_skills uses job's literal string
+        assert "React.js" in expl["missing_skills"]
+        assert "react" not in expl["missing_skills"]
