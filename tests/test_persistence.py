@@ -47,18 +47,25 @@ async def test_persistence_concurrent_duplicate_rejection():
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
     from app.config import get_settings
     test_engine = create_async_engine(get_settings().database_url)
-    async with AsyncSession(test_engine) as db:
-        c1 = await ingest_candidate(db, raw_text="Developer with concurrent_test@example.com", filename="res1.pdf")
-        
-        c_dup = Candidate(
-            email="concurrent_test@example.com",
-            raw_text="duplicate",
-            raw_text_hash="dummy_hash"
-        )
-        db.add(c_dup)
-        with pytest.raises(IntegrityError):
-            await db.flush()
-        await db.rollback()
+    
+    # We will try to ingest the exact same candidate twice concurrently.
+    # One should succeed, the other should fail with IntegrityError because
+    # they try to insert identical unique constraints (email or raw_text_hash).
+    
+    async def try_ingest():
+        async with AsyncSession(test_engine) as db:
+            await ingest_candidate(db, raw_text="Developer with concurrent_test@example.com", filename="res1.pdf")
+            
+    # We must catch the IntegrityError in the failing task
+    results = await asyncio.gather(try_ingest(), try_ingest(), return_exceptions=True)
+    
+    # One should be None (success), the other should be an IntegrityError
+    errors = [r for r in results if isinstance(r, IntegrityError)]
+    successes = [r for r in results if r is None]
+    
+    assert len(successes) == 1
+    assert len(errors) == 1
+    
     await test_engine.dispose()
 
 async def test_match_endpoint_append_only():

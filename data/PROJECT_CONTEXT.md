@@ -21,6 +21,7 @@ The system is composed of several cleanly decoupled modules:
 - **Phase 1 (Parsing & Extraction)**: Complete. PDF/DOCX multi-format parsers and spaCy NER extraction pipeline developed.
 - **Phase 2 (Matching Engine)**: Complete. Normalizer, TF-IDF, BM25, and dynamic Scorer pipeline developed. Endpoint added and validated with fallback logic.
 - **Phase 3 (Auto-tagging & Explainable Logging)**: Complete. `tagger.py` developed for signal-based categorization, full-stack inference, and explainability injection. Discrepancies between literal input and canonical logs resolved.
+- **Phase 4 (PostgreSQL Persistence)**: Complete. Schema designed with `candidates` and `jobs` as mutable entities, and `match_results` as an immutable append-only history. Concurrency dedup logic implemented via `email` and `raw_text_hash` fallback with partial unique indexes. Test infrastructure migrated to direct `httpx` container networking to prevent event loop connection clashes.
 
 ## Key Design Decisions
 - **Explainability Logging Uses Literal Strings**: Both `tag_evidence` and `matched_skills`/`missing_skills` display the exact literal string submitted by the candidate/job description (e.g., "NodeJS" instead of "node.js"). This ensures traceability back to the source text for human recruiters reading the logs, avoiding confusion over canonical mapping.
@@ -28,11 +29,14 @@ The system is composed of several cleanly decoupled modules:
 - **BM25 Single-Candidate Fallback**: Due to BM25 returning 0.0 scores natively on single-document batches, min-max normalization falls back to `1.0` if there is ANY keyword overlap, and `0.0` otherwise.
 - **Full-Stack Tag Stacking**: When a candidate has sufficient evidence for both `frontend` and `backend` tags, the `full-stack` tag is explicitly appended sequentially. All three tags are intentionally returned in the final output.
 - **Targeted Evidence vs Raw Text**: The tagging rules exclusively scan structured fields (`skills`, `projects`, `experience`) and actively exclude the un-sectioned `raw_text` dump. This enforces signal accuracy over generic keyword guessing.
+- **Mutable vs Immutable Architecture**: `Candidates` and `Jobs` are treated as mutable entities representing current states. `MatchResults` are strictly immutable, append-only logs documenting a snapshot in time.
+- **Deduplication Logic**: When importing candidates, the system attempts deduplication on `email` first. If no email exists, it falls back to a SHA256 hash of the `raw_text`. Partial unique indexes enforce this concurrently at the DB layer.
+- **Testing Database Integration**: Tests run against the live FastAPI app via `httpx.Client(base_url="http://localhost:8000")` instead of `TestClient` to prevent asyncio loop collisions with global database engine pools. Standalone database test logic isolates itself by dynamically creating and disposing a local `AsyncEngine` inside each test.
 
 ## Known Gaps / Tech Debt
 - **No messy/real-world resume tests**: Parsing tests use perfectly formatted dummy documents; real-world multi-column PDFs are not yet tested.
 - **BM25 Stopword Filtering**: Tokenization for BM25 relies on basic whitespace splitting and lowercase; formal stopword filtering (e.g., "and", "the") is missing.
-- **Data Persistence**: Postgres database exists, but candidates and matching histories are currently stateless and not persisted.
+- **PII Limiting**: While emails and phones are extracted, the system currently lacks anonymization logic. Since raw texts are stored in the DB alongside full names, proper PII redaction capabilities may be needed for production.
 
 ## How to Run the Project
 All commands should be executed from the project root (`scratch/resumeranker/`):

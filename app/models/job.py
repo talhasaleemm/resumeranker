@@ -4,7 +4,7 @@ app/models/job.py — ORM model for Job Descriptions.
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import ARRAY, DateTime, Text
+from sqlalchemy import ARRAY, Boolean, DateTime, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -24,7 +24,6 @@ class Job(Base):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
 
-    # Skills parsed from the job description — stored as canonical names
     required_skills: Mapped[list[str] | None] = mapped_column(
         ARRAY(Text), nullable=True, default=list
     )
@@ -32,13 +31,18 @@ class Job(Base):
         ARRAY(Text), nullable=True, default=list
     )
 
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
 
     # Relationships
     match_results: Mapped[list["MatchResult"]] = relationship(  # type: ignore[name-defined]
-        "MatchResult", back_populates="job", cascade="all, delete-orphan"
+        "MatchResult", back_populates="job"
     )
 
     def __repr__(self) -> str:

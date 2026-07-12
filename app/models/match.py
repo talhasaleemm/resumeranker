@@ -1,27 +1,11 @@
 """
 app/models/match.py — ORM model for MatchResult (candidate ↔ job ranking).
-
-Every score is fully explainable via explanation_log (JSONB).
-Example explanation_log structure:
-{
-  "tfidf_score": 0.72,
-  "bm25_score": 0.68,
-  "skill_overlap_score": 0.80,
-  "final_score": 0.724,
-  "weights": {"tfidf": 0.4, "bm25": 0.4, "skill": 0.2},
-  "matched_required_skills": ["Python", "FastAPI", "PostgreSQL"],
-  "matched_preferred_skills": ["Docker", "Redis"],
-  "missing_required_skills": ["Kubernetes"],
-  "candidate_profile_tags": ["backend", "AI/ML"],
-  "top_tfidf_terms": ["python", "api", "database"],
-  "explanation_text": "Candidate matched 3/4 required skills and 2/3 preferred skills..."
-}
 """
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, JSON, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -37,15 +21,16 @@ class MatchResult(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    # Append-only history uses RESTRICT delete
     candidate_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("candidates.id", ondelete="CASCADE"),
+        ForeignKey("candidates.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
     job_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("jobs.id", ondelete="CASCADE"),
+        ForeignKey("jobs.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
@@ -56,13 +41,11 @@ class MatchResult(Base):
     skill_overlap_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
 
     # Weighted composite score
-    final_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, index=True)
+    final_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
 
-    # Full explanation: which fields, weights, matched skills produced this score
-    explanation_log: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-
-    # Human-readable summary of the match
-    explanation_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Immutable snapshot data
+    weights_used: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    explanation_log: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
@@ -74,6 +57,22 @@ class MatchResult(Base):
     )
     job: Mapped["Job"] = relationship(  # type: ignore[name-defined]
         "Job", back_populates="match_results"
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "final_score >= 0.0 AND final_score <= 100.0", name="chk_final_score_bounds"
+        ),
+        CheckConstraint(
+            "tfidf_score >= 0.0 AND tfidf_score <= 1.0", name="chk_tfidf_score_bounds"
+        ),
+        CheckConstraint(
+            "bm25_score >= 0.0 AND bm25_score <= 1.0", name="chk_bm25_score_bounds"
+        ),
+        CheckConstraint(
+            "skill_overlap_score >= 0.0 AND skill_overlap_score <= 1.0",
+            name="chk_skill_overlap_score_bounds",
+        ),
     )
 
     def __repr__(self) -> str:
