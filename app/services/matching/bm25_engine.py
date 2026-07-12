@@ -54,7 +54,11 @@ def compute_normalized_bm25_scores(query: str, documents: List[str]) -> List[flo
     max_score = max(raw_scores)
     
     if max_score == min_score:
-        return [0.0 if max_score == 0 else 1.0 for _ in raw_scores]
+        # Fallback: if all scores are identical (e.g. single candidate batch or all tied),
+        # return 1.0 if there was any match at all, otherwise 0.0.
+        # Why 1.0? If there's only one candidate and they have a BM25 overlap > 0, 
+        # they perfectly represent the max possible score for this relative batch.
+        return [0.0 if max_score == 0.0 else 1.0 for _ in raw_scores]
         
     # Min-Max normalize
     normalized = [(s - min_score) / (max_score - min_score) for s in raw_scores]

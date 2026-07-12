@@ -2,7 +2,7 @@
 app/api/v1/matches.py — Match/ranking endpoint (Phase 2).
 """
 from typing import List, Dict, Any, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from fastapi import APIRouter, HTTPException
 
 from app.services.matching.scorer import score_candidates
@@ -11,10 +11,19 @@ from app.config import get_settings
 router = APIRouter(prefix="/matches", tags=["matches"])
 
 
+import math
+
 class MatchWeights(BaseModel):
-    tfidf: Optional[float] = 0.4
-    bm25: Optional[float] = 0.4
-    skills: Optional[float] = 0.2
+    tfidf: float
+    bm25: float
+    skills: float
+
+    @model_validator(mode="after")
+    def check_weights_sum(self) -> "MatchWeights":
+        total = self.tfidf + self.bm25 + self.skills
+        if not math.isclose(total, 1.0, rel_tol=1e-5):
+            raise ValueError(f"Weights must sum to exactly 1.0. Got {total:.2f}")
+        return self
 
 
 class MatchRequest(BaseModel):
