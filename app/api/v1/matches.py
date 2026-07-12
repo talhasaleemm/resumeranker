@@ -20,6 +20,9 @@ class MatchWeights(BaseModel):
 
     @model_validator(mode="after")
     def check_weights_sum(self) -> "MatchWeights":
+        if self.tfidf < 0 or self.bm25 < 0 or self.skills < 0:
+            raise ValueError("Weights cannot be negative.")
+            
         total = self.tfidf + self.bm25 + self.skills
         if not math.isclose(total, 1.0, rel_tol=1e-5):
             raise ValueError(f"Weights must sum to exactly 1.0. Got {total:.2f}")

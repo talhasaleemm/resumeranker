@@ -38,6 +38,7 @@ services:
     volumes:
       - ./app:/app/app
       - ./alembic.ini:/app/alembic.ini
+      - ./tests:/app/tests
     command: >
       sh -c "
         echo '--- Running Alembic migrations ---' &&

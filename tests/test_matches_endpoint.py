@@ -80,10 +80,29 @@ def test_match_endpoint_missing_weight_key():
     assert data["detail"][0]["loc"] == ["body", "weights", "skills"]
 
 
-def test_match_endpoint_single_candidate_no_crash():
+def test_match_endpoint_negative_weight():
+    """Test payload with a negative weight is rejected with 422, even if it sums to 1.0."""
+    payload = {
+        "job_description": "Python dev",
+        "required_skills": ["python"],
+        "candidates": [{"id": "1", "raw_text": "Python", "skills": ["python"]}],
+        "weights": {
+            "tfidf": -0.5,
+            "bm25": 1.5,
+            "skills": 0.0
+        }
+    }
+    
+    response = client.post("/api/v1/matches/", json=payload)
+    assert response.status_code == 422
+    data = response.json()
+    assert "Weights cannot be negative" in str(data)
+
+
+def test_match_endpoint_single_candidate_with_overlap():
     """
     Test BM25 min-max normalization fallback when there is exactly one candidate 
-    (max_score == min_score). It should not crash with division-by-zero.
+    (max_score == min_score) AND there is keyword overlap. Should return 1.0.
     """
     payload = {
         "job_description": "React Developer",
@@ -106,5 +125,33 @@ def test_match_endpoint_single_candidate_no_crash():
     assert response.status_code == 200
     data = response.json()
     assert len(data["matches"]) == 1
-    # Check that BM25 successfully provided a score (fallback logic)
     assert data["matches"][0]["bm25_score"] == 1.0
+
+
+def test_match_endpoint_single_candidate_without_overlap():
+    """
+    Test BM25 min-max normalization fallback when there is exactly one candidate 
+    AND there is no keyword overlap (max_score == 0.0). Should return 0.0.
+    """
+    payload = {
+        "job_description": "React Developer",
+        "required_skills": ["react"],
+        "candidates": [
+            {
+                "id": "cand_only",
+                "raw_text": "I am a Java backend developer.",
+                "skills": ["java"]
+            }
+        ],
+        "weights": {
+            "tfidf": 0.4,
+            "bm25": 0.4,
+            "skills": 0.2
+        }
+    }
+    
+    response = client.post("/api/v1/matches/", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["matches"]) == 1
+    assert data["matches"][0]["bm25_score"] == 0.0
