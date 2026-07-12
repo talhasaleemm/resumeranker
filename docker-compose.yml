@@ -40,8 +40,6 @@ services:
       - ./alembic.ini:/app/alembic.ini
     command: >
       sh -c "
-        echo '--- Waiting 5s for DNS propagation ---' &&
-        sleep 5 &&
         echo '--- Running Alembic migrations ---' &&
         alembic upgrade head &&
         echo '--- Starting FastAPI server ---' &&
