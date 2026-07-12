@@ -1,0 +1,63 @@
+# =========================================================
+# docker-compose.yml — ResumeRanker
+# Spins up: FastAPI app + PostgreSQL
+# =========================================================
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-resumeranker}
+      POSTGRES_USER: ${POSTGRES_USER:-resumeranker}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword123}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-resumeranker} -d ${POSTGRES_DB:-resumeranker}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - resumeranker_net
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app
+      - ./alembic.ini:/app/alembic.ini
+    command: >
+      sh -c "
+        echo '--- Running Alembic migrations ---' &&
+        alembic upgrade head &&
+        echo '--- Starting FastAPI server ---' &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    networks:
+      - resumeranker_net
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  resumeranker_net:
+    driver: bridge
