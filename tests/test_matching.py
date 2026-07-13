@@ -49,6 +49,22 @@ class TestEngines:
         assert scores[0] > scores[1]
         assert scores[2] > scores[1]
 
+    def test_bm25_stopword_filtering(self):
+        query = "senior frontend developer with 5 years experience"
+        # Sharing only stopwords/buzzwords should yield zero BM25 overlap
+        docs = [
+            "senior backend developer with 10 years experience",
+            "junior devops engineer with 2 years experience"
+        ]
+        scores = compute_normalized_bm25_scores(query, docs)
+        # Because we strip "senior", "developer", "with", "years", "experience", "engineer", "junior",
+        # the query becomes "frontend 5".
+        # Doc 1 becomes "backend 10".
+        # Doc 2 becomes "devops 2".
+        from app.services.matching.bm25_engine import compute_bm25_scores
+        raw = compute_bm25_scores(query, docs)
+        assert max(raw) == 0.0, f"Expected 0 raw overlap due to stopword filtering, got {raw}"
+
 
 class TestScorer:
     def test_compute_skill_overlap(self):

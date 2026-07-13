@@ -7,12 +7,18 @@ from typing import List
 from rank_bm25 import BM25Okapi
 
 
+from spacy.lang.en.stop_words import STOP_WORDS
+
+CUSTOM_STOP_WORDS = {"developer", "experience", "engineer", "senior", "junior", "years"}
+ALL_STOP_WORDS = STOP_WORDS.union(CUSTOM_STOP_WORDS)
+
 def _tokenize(text: str) -> List[str]:
-    """Simple tokenization: lowercase, remove punctuation, split by whitespace."""
+    """Tokenization: lowercase, remove punctuation, remove stopwords, split by whitespace."""
     text = text.lower()
     # Remove punctuation
     text = text.translate(str.maketrans("", "", string.punctuation))
-    return text.split()
+    tokens = text.split()
+    return [t for t in tokens if t not in ALL_STOP_WORDS]
 
 
 def compute_bm25_scores(query: str, documents: List[str]) -> List[float]:

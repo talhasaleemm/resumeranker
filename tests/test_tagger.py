@@ -89,3 +89,24 @@ def test_evidence_logs_original_candidate_skill_string():
     
     assert "skill: REACT" in evidence.get("frontend", [])
     assert "skill: nOdE" in evidence.get("backend", [])
+
+def test_assign_tags_ambiguous_two_weak_signals():
+    """Exactly one weak signal for two different categories should yield 'insufficient evidence' for both, not guess one."""
+    data = {
+        "skills": ["react", "python"],  # 1 for frontend, 1 for backend
+        "experience": ["Worked as a developer"]
+    }
+    tags, evidence = assign_tags(data)
+    assert tags == ["insufficient evidence"]
+    # evidence dictionary should contain the partial signals for debugging
+    assert "react" in str(evidence).lower()
+    assert "python" in str(evidence).lower()
+
+def test_assign_tags_ambiguous_cross_domain():
+    """One signal each for data science, AI/ML, and backend. None hit the threshold."""
+    data = {
+        "skills": ["pandas", "tensorflow", "django"], # 1 for DS, 1 for AI/ML, 1 for backend
+        "experience": []
+    }
+    tags, evidence = assign_tags(data)
+    assert tags == ["insufficient evidence"]

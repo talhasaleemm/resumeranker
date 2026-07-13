@@ -35,8 +35,6 @@ The system is composed of several cleanly decoupled modules:
 - **Testing Database Integration**: Tests run against the live FastAPI app via `httpx.Client(base_url="http://localhost:8000")` instead of `TestClient` to prevent asyncio loop collisions with global database engine pools. Standalone database test logic isolates itself by dynamically creating and disposing a local `AsyncEngine` inside each test.
 
 ## Known Gaps / Tech Debt
-- **No messy/real-world resume tests**: Parsing tests use perfectly formatted dummy documents; real-world multi-column PDFs are not yet tested.
-- **BM25 Stopword Filtering**: Tokenization for BM25 relies on basic whitespace splitting and lowercase; formal stopword filtering (e.g., "and", "the") is missing.
 - **PII Limiting**: While emails and phones are extracted, the system currently lacks anonymization logic. Since raw texts are stored in the DB alongside full names, proper PII redaction capabilities may be needed for production.
 - **No stateless / one-off matching**: `POST /api/v1/matches/` requires both the job and all candidates to already exist as persisted DB records (identified by UUID). There is no endpoint for scoring a raw resume text against a raw job description without first persisting both. This was a deliberate scope decision made implicitly during Phase 4B (embedding persistence into the matches flow) rather than an explicit design choice reviewed and approved at the time. Flagged here as a known gap: callers who want ephemeral scoring must still ingest and persist first.
 

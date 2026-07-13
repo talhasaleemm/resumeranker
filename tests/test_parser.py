@@ -439,3 +439,44 @@ if __name__ == "__main__":
         # Print all fields except raw_sections for readability
         display = {k: v for k, v in profile.items() if k != "raw_sections"}
         print(json.dumps(display, indent=2, ensure_ascii=False))
+
+
+class TestEdgeCaseParser:
+    def test_multicolumn_pdf(self):
+        """a. Multi-column layout: handles it reasonably (no crash)."""
+        from app.services.parser.pdf_parser import extract_text_from_pdf
+        data = _load_pdf_bytes("resume_multicolumn.pdf")
+        text = extract_text_from_pdf(data, "resume_multicolumn.pdf")
+        assert len(text) > 0, "Should extract text from multi-column PDF"
+        # Since it's a PDF, fitz might extract it in reading order or visual block order
+        assert "EXPERIENCE" in text
+        assert "SKILLS" in text
+
+    def test_table_based_docx(self):
+        """b. Table-based resume."""
+        from app.services.parser.docx_parser import extract_text_from_docx
+        data = _load_docx_bytes("resume_table.docx")
+        text = extract_text_from_docx(data, "resume_table.docx")
+        assert len(text) > 0, "Should extract text from table-based DOCX"
+        assert "EXPERIENCE" in text
+        assert "Company A" in text
+
+    def test_scanned_pdf(self):
+        """c. Scanned/image-based PDF with no extractable text layer."""
+        from app.services.parser.pdf_parser import extract_text_from_pdf, ParseError
+        import pytest
+        data = _load_pdf_bytes("resume_scanned.pdf")
+        with pytest.raises(ParseError):
+            extract_text_from_pdf(data, "resume_scanned.pdf")
+
+    def test_missing_sections_pdf(self):
+        """d. Missing expected sections (e.g. no EXPERIENCE)."""
+        from app.services.parser.pdf_parser import extract_text_from_pdf
+        from app.services.parser.ner_pipeline import parse_resume
+        data = _load_pdf_bytes("resume_missing_sections.pdf")
+        text = extract_text_from_pdf(data, "resume_missing_sections.pdf")
+        profile = parse_resume(text, "resume_missing_sections.pdf")
+        
+        assert profile["name"] is not None
+        assert profile["experience"] == []
+        assert profile["skills"] == []
