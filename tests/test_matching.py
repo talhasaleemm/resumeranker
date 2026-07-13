@@ -71,7 +71,10 @@ class TestEngines:
         query = "looking for a backend python programmer"
         docs = [
             "looking for a frontend react programmer",
-            "looking for a backend python programmer"
+            "looking for a backend python programmer",
+            "a completely unrelated document",
+            "another unrelated document",
+            "yet another unrelated document"
         ]
         from app.services.matching.bm25_engine import compute_normalized_bm25_scores
         scores = compute_normalized_bm25_scores(query, docs)

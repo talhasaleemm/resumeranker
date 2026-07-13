@@ -1,5 +1,6 @@
 """
 app/api/v1/jobs.py — Job description endpoint (placeholder for Phase 4).
+# Bind mount test comment
 """
 from pydantic import BaseModel
 from typing import List
