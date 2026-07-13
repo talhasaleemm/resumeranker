@@ -303,7 +303,8 @@ These are documented honestly and are on the roadmap for Phase 6 (QA + Security 
 
 - **No messy / real-world resume tests.** The test suite uses well-structured synthetic resumes. Multi-column PDF layouts, resume-as-table formats, and scanned/image-based PDFs are not yet tested and may produce poor extraction results.
 - **BM25 lacks stopword filtering.** BM25 tokenisation uses basic whitespace splitting and lowercasing. Common English stopwords (e.g. "and", "the") are not filtered, which can slightly inflate keyword-frequency scores.
-- **PII stored in plaintext.** Candidate names, email addresses, phone numbers, and full raw resume text are stored unredacted in PostgreSQL. There is currently no anonymisation or PII redaction layer — this needs to be addressed before any production deployment handling real candidate data.
+- **PII Encryption & Performance Cost**: Sensitive candidate identifiers (email, phone, name) and unstructured job history text (raw_text, parsed_experience, parsed_projects) are strictly encrypted at the application level using Fernet. Because TF-IDF/BM25 scoring and auto-tagging require reading these texts, the system must decrypt exactly 3 fields per candidate on every match request. This introduces a high-frequency performance penalty, which is an accepted tradeoff for data security. Key rotation is not currently implemented.
+- **Stateless Matching Unavailable**: `POST /api/v1/matches/` requires all entities to exist in the database. Callers wanting to run ephemeral/on-the-fly scoring must ingest and persist the entities first.
 
 ---
 

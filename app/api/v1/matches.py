@@ -13,6 +13,7 @@ from app.models.candidate import Candidate
 from app.models.job import Job
 from app.models.match import MatchResult
 from app.services.matching.scorer import score_candidates
+from app.services.encryption import decrypt_text, decrypt_json
 from app.config import get_settings
 
 router = APIRouter(prefix="/matches", tags=["matches"])
@@ -61,13 +62,16 @@ async def match_candidates(request: MatchRequest, db: AsyncSession = Depends(get
         raise HTTPException(status_code=404, detail="No candidates found")
 
     candidates_payload = []
+    # Build dictionary to map cand_id to candidate object for later decoration
+    cand_map = {}
     for c in candidates_db:
+        cand_map[str(c.id)] = c
         candidates_payload.append({
             "id": str(c.id),
-            "raw_text": c.raw_text or "",
+            "raw_text": decrypt_text(c.raw_text_encrypted) or "",
             "skills": c.parsed_skills or [],
-            "experience": c.parsed_experience or [],
-            "projects": c.parsed_projects or []
+            "experience": decrypt_json(c.parsed_experience_encrypted) or [],
+            "projects": decrypt_json(c.parsed_projects_encrypted) or []
         })
 
     original_tfidf = settings.tfidf_weight
@@ -110,6 +114,11 @@ async def match_candidates(request: MatchRequest, db: AsyncSession = Depends(get
                 explanation_log=r["explanation_log"]
             )
             db.add(mr)
+            
+            # Populate PII fields into the response
+            c = cand_map[r["candidate_id"]]
+            r["candidate_name"] = decrypt_text(c.full_name_encrypted)
+            r["candidate_email"] = decrypt_text(c.email_encrypted)
             matches_out.append(r)
 
         await db.commit()

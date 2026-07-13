@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.candidate import Candidate
 from app.services.parser.ner_pipeline import parse_resume
 from app.services.tagging.tagger import assign_tags
+from app.services.encryption import encrypt_text, encrypt_json, compute_blind_index
 
 
 async def ingest_candidate(
@@ -33,9 +34,10 @@ async def ingest_candidate(
 
     candidate = None
 
-    # Dedup 1: By Email
-    if email:
-        stmt = select(Candidate).where(Candidate.email == email)
+    # Dedup 1: By Email Hash
+    email_hash = compute_blind_index(email) if email else None
+    if email_hash:
+        stmt = select(Candidate).where(Candidate.email_hash == email_hash)
         result = await db.execute(stmt)
         candidate = result.scalar_one_or_none()
 
@@ -47,28 +49,30 @@ async def ingest_candidate(
 
     if candidate:
         # Update existing candidate
-        if email:
-            candidate.email = email
+        if email_hash:
+            candidate.email_hash = email_hash
+            candidate.email_encrypted = encrypt_text(email)
         candidate.raw_text_hash = raw_text_hash
-        candidate.phone = phone
-        candidate.full_name = full_name
-        candidate.raw_text = raw_text
+        candidate.phone_encrypted = encrypt_text(phone)
+        candidate.full_name_encrypted = encrypt_text(full_name)
+        candidate.raw_text_encrypted = encrypt_text(raw_text)
         candidate.parsed_skills = parsed_skills
-        candidate.parsed_experience = parsed_experience
-        candidate.parsed_projects = parsed_projects
+        candidate.parsed_experience_encrypted = encrypt_json(parsed_experience)
+        candidate.parsed_projects_encrypted = encrypt_json(parsed_projects)
         candidate.assigned_tags = assigned_tags
         candidate.is_active = True
     else:
         # Insert new candidate
         candidate = Candidate(
-            email=email,
+            email_hash=email_hash,
+            email_encrypted=encrypt_text(email),
             raw_text_hash=raw_text_hash,
-            phone=phone,
-            full_name=full_name,
-            raw_text=raw_text,
+            phone_encrypted=encrypt_text(phone),
+            full_name_encrypted=encrypt_text(full_name),
+            raw_text_encrypted=encrypt_text(raw_text),
             parsed_skills=parsed_skills,
-            parsed_experience=parsed_experience,
-            parsed_projects=parsed_projects,
+            parsed_experience_encrypted=encrypt_json(parsed_experience),
+            parsed_projects_encrypted=encrypt_json(parsed_projects),
             assigned_tags=assigned_tags,
             is_active=True,
         )

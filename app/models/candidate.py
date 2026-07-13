@@ -16,6 +16,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.services.encryption import decrypt_text, decrypt_json
 
 
 def _utcnow() -> datetime:
@@ -28,20 +29,21 @@ class Candidate(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    email_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    email_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     raw_text_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    full_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    phone_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    full_name_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # Original extracted text — stored for auditability
-    raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Original extracted text — stored securely
+    raw_text_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Full structured profile
     parsed_skills: Mapped[list[str] | None] = mapped_column(
         ARRAY(Text), nullable=True, default=list
     )
-    parsed_experience: Mapped[dict | list | None] = mapped_column(JSONB, nullable=True)
-    parsed_projects: Mapped[dict | list | None] = mapped_column(JSONB, nullable=True)
+    parsed_experience_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    parsed_projects_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Auto-tags: e.g. ["backend", "AI/ML"]
     assigned_tags: Mapped[list[str] | None] = mapped_column(
@@ -65,9 +67,9 @@ class Candidate(Base):
     __table_args__ = (
         Index(
             "ix_candidate_email_unique",
-            "email",
+            "email_hash",
             unique=True,
-            postgresql_where=email.isnot(None),
+            postgresql_where=email_hash.isnot(None),
         ),
         Index(
             "ix_candidate_hash_unique",
@@ -77,5 +79,29 @@ class Candidate(Base):
         ),
     )
 
+    @property
+    def email(self) -> str | None:
+        return decrypt_text(self.email_encrypted)
+
+    @property
+    def phone(self) -> str | None:
+        return decrypt_text(self.phone_encrypted)
+
+    @property
+    def name(self) -> str | None:
+        return decrypt_text(self.full_name_encrypted)
+
+    @property
+    def raw_text(self) -> str | None:
+        return decrypt_text(self.raw_text_encrypted)
+
+    @property
+    def parsed_experience(self) -> dict | list | None:
+        return decrypt_json(self.parsed_experience_encrypted)
+
+    @property
+    def parsed_projects(self) -> dict | list | None:
+        return decrypt_json(self.parsed_projects_encrypted)
+
     def __repr__(self) -> str:
-        return f"<Candidate id={self.id} email={self.email!r}>"
+        return f"<Candidate id={self.id}>"

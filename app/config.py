@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     app_port: int = 8000
     secret_key: str = "change-me"
 
+    # Security
+    ENCRYPTION_KEY: str = ""
+    BLIND_INDEX_KEY: str = ""
+
     # PostgreSQL
     postgres_host: str = "db"
     postgres_port: int = 5432
