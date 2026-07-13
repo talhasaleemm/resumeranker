@@ -162,7 +162,32 @@ tests/test_parser.py::TestNERPipeline::test_json_serializable PASSED
 
 ---
 
-## Phase 5 — Full Dockerization + README (UPCOMING)
+## Phase 5 — Full Dockerization + README
+
+**Status:** ✅ Complete  
+**Date:** 2026-07-13
+
+### What was built
+
+#### README.md (primary deliverable)
+- Full rewrite of `README.md` at repo root — purpose-built for GitHub visibility.
+- Includes: project summary, full tech stack table (versions pulled from `requirements.txt`), ASCII architecture diagram, module map, step-by-step setup instructions (including Docker Desktop prerequisite for Windows), verified `curl` examples for all three endpoints, live-captured API response from `POST /api/v1/matches/` showing `explanation_log` with `tags_detected`, `tag_evidence`, and `matched_skills`, key design decisions, known limitations section (no redactions), testing section with breakdown by file, and project structure tree.
+- All facts (test count, versions, endpoint paths, command output) verified by running them live before writing.
+
+#### Docker hardening (verification)
+- **Non-root user**: Confirmed the Dockerfile already creates `appuser` (UID 1001) and sets `USER appuser` at runtime (Dockerfile lines 50–51). Live verification: `docker-compose exec -T app whoami` → `appuser`. No change required.
+- **`.env.example` completeness**: Cross-checked all fields in `app/config.py` against `.env.example`. All 17 settings are present. No raw `os.environ`/`os.getenv` calls exist outside `config.py` (grep confirmed zero results). No changes required.
+- **Image size baseline**: `resumeranker-app:latest` — **2.81 GB disk usage / 681 MB content size** (multi-stage build, `python:3.12-slim` base + spaCy model). No aggressive optimisation attempted this phase (secondary effort, low risk/reward at project scale).
+
+### Test count at phase close
+56 tests, 0 failures (verified by live `docker-compose exec -T app pytest tests/ -v` run).
+
+### What broke / how fixed
+- Nothing broke. Dockerfile was already hardened (non-root user added in Phase 1 Docker fix). `.env.example` was already complete.
+
+### Git
+- Branch: `main`
+- Commit: `phase-5: comprehensive README, Docker hardening verification, Phase 5 docs`
 
 ---
 
