@@ -443,18 +443,23 @@ if __name__ == "__main__":
 
 class TestEdgeCaseParser:
     def test_multicolumn_pdf(self):
-        """a. Multi-column layout: handles it without crashing but degrades (interleaved text)."""
+        """a. Multi-column layout: cleanly separates columns using PyMuPDF block coordinates."""
         from app.services.parser.pdf_parser import extract_text_from_pdf
         from app.services.parser.ner_pipeline import parse_resume
         data = _load_pdf_bytes("resume_multicolumn.pdf")
         text = extract_text_from_pdf(data, "resume_multicolumn.pdf")
         profile = parse_resume(text, "resume_multicolumn.pdf")
-        # Text is interleaved horizontally by fitz, so skills are not isolated cleanly.
-        assert profile["skills"] == [], "Degraded extraction: skills section is empty due to interleaving"
+        # Text is now isolated cleanly by column heuristic
+        skills_lower = [s.lower() for s in profile["skills"]]
+        assert "python" in skills_lower, "Skills should be cleanly parsed"
+        
+        # Verify experience is not merged horizontally
+        exp_raw = profile["experience"][0]["raw"].lower() if profile["experience"] else ""
+        assert "python" not in exp_raw, f"Experience should not be merged with Skills column, got: {exp_raw}"
         assert len(profile["experience"]) > 0
 
     def test_table_based_docx(self):
-        """b. Table-based resume: cleanly parsed by python-docx."""
+        """b. Table-based resume: degrades because python-docx merges cells on the same line, breaking section headers."""
         from app.services.parser.docx_parser import extract_text_from_docx
         from app.services.parser.ner_pipeline import parse_resume
         data = _load_docx_bytes("resume_table.docx")

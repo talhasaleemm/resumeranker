@@ -1,8 +1,8 @@
 """
 app/services/parser/pdf_parser.py — PDF → raw text extractor.
 
-Uses pdfplumber as primary (best layout preservation for resumes),
-falls back to PyMuPDF (fitz) if pdfplumber fails or returns empty text.
+Uses PyMuPDF (fitz) as primary for column-aware extraction,
+falls back to pdfplumber if PyMuPDF fails or returns empty text.
 
 Explicitly does NOT fake success — raises ParseError if neither library
 can extract usable text from the file.
@@ -33,19 +33,19 @@ def extract_text_from_pdf(file_bytes: bytes, filename: str = "unknown.pdf") -> s
     Raises:
         ParseError: If neither pdfplumber nor PyMuPDF can extract usable text.
     """
-    text = _try_pdfplumber(file_bytes, filename)
-    if text and len(text.strip()) > 50:
-        logger.info("pdfplumber extracted %d chars from '%s'", len(text), filename)
-        return text
-
-    logger.warning(
-        "pdfplumber returned insufficient text (%d chars) from '%s', trying PyMuPDF",
-        len(text) if text else 0,
-        filename,
-    )
     text = _try_pymupdf(file_bytes, filename)
     if text and len(text.strip()) > 50:
         logger.info("PyMuPDF extracted %d chars from '%s'", len(text), filename)
+        return text
+
+    logger.warning(
+        "PyMuPDF returned insufficient text (%d chars) from '%s', trying pdfplumber",
+        len(text) if text else 0,
+        filename,
+    )
+    text = _try_pdfplumber(file_bytes, filename)
+    if text and len(text.strip()) > 50:
+        logger.info("pdfplumber extracted %d chars from '%s'", len(text), filename)
         return text
 
     raise ParseError(
@@ -83,7 +83,7 @@ def _try_pdfplumber(file_bytes: bytes, filename: str) -> str:
 
 
 def _try_pymupdf(file_bytes: bytes, filename: str) -> str:
-    """Attempt extraction with PyMuPDF (fitz)."""
+    """Attempt extraction with PyMuPDF (fitz) using column-aware sorting."""
     try:
         import fitz  # PyMuPDF
 
@@ -93,7 +93,16 @@ def _try_pymupdf(file_bytes: bytes, filename: str) -> str:
                 logger.warning("PyMuPDF: '%s' has 0 pages", filename)
                 return ""
             for i, page in enumerate(doc):
-                page_text = page.get_text("text") or ""
+                # get_text("blocks") returns list of tuples: (x0, y0, x1, y1, "text", block_no, block_type)
+                # block_type == 0 is text
+                blocks = [b for b in page.get_text("blocks") if b[6] == 0]
+                
+                # Heuristic for multi-column: sort blocks primarily by x0 coordinate (left-to-right),
+                # rounded to group columns together. Then by y0 (top-to-bottom) within a column.
+                # A reasonable threshold for horizontal grouping is 50 points.
+                blocks.sort(key=lambda b: (round(b[0] / 50.0), b[1]))
+                
+                page_text = "\n\n".join([b[4].strip() for b in blocks if b[4].strip()])
                 pages_text.append(page_text)
                 logger.debug("PyMuPDF page %d: %d chars", i + 1, len(page_text))
         return "\n\n".join(pages_text)
