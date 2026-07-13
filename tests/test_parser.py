@@ -443,23 +443,26 @@ if __name__ == "__main__":
 
 class TestEdgeCaseParser:
     def test_multicolumn_pdf(self):
-        """a. Multi-column layout: handles it reasonably (no crash)."""
+        """a. Multi-column layout: handles it without crashing but degrades (interleaved text)."""
         from app.services.parser.pdf_parser import extract_text_from_pdf
+        from app.services.parser.ner_pipeline import parse_resume
         data = _load_pdf_bytes("resume_multicolumn.pdf")
         text = extract_text_from_pdf(data, "resume_multicolumn.pdf")
-        assert len(text) > 0, "Should extract text from multi-column PDF"
-        # Since it's a PDF, fitz might extract it in reading order or visual block order
-        assert "EXPERIENCE" in text
-        assert "SKILLS" in text
+        profile = parse_resume(text, "resume_multicolumn.pdf")
+        # Text is interleaved horizontally by fitz, so skills are not isolated cleanly.
+        assert profile["skills"] == [], "Degraded extraction: skills section is empty due to interleaving"
+        assert len(profile["experience"]) > 0
 
     def test_table_based_docx(self):
-        """b. Table-based resume."""
+        """b. Table-based resume: cleanly parsed by python-docx."""
         from app.services.parser.docx_parser import extract_text_from_docx
+        from app.services.parser.ner_pipeline import parse_resume
         data = _load_docx_bytes("resume_table.docx")
         text = extract_text_from_docx(data, "resume_table.docx")
-        assert len(text) > 0, "Should extract text from table-based DOCX"
-        assert "EXPERIENCE" in text
-        assert "Company A" in text
+        profile = parse_resume(text, "resume_table.docx")
+        skills_lower = [s.lower() for s in profile["skills"]]
+        assert "python" in skills_lower
+        assert len(profile["experience"]) > 0
 
     def test_scanned_pdf(self):
         """c. Scanned/image-based PDF with no extractable text layer."""

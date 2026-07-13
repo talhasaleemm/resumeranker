@@ -65,6 +65,23 @@ class TestEngines:
         raw = compute_bm25_scores(query, docs)
         assert max(raw) == 0.0, f"Expected 0 raw overlap due to stopword filtering, got {raw}"
 
+    def test_bm25_stopword_filtering_independent(self):
+        # A test proving that standard English stopwords ('looking', 'for', 'a') are filtered 
+        # independently of the custom buzzword list, producing a meaningful score difference.
+        query = "looking for a backend python programmer"
+        docs = [
+            "looking for a frontend react programmer",
+            "looking for a backend python programmer"
+        ]
+        from app.services.matching.bm25_engine import compute_normalized_bm25_scores
+        scores = compute_normalized_bm25_scores(query, docs)
+        # Standard stopwords (looking, for, a) are stripped.
+        # Query becomes ["backend", "python", "programmer"].
+        # Doc 1 matches only "programmer".
+        # Doc 2 matches "backend", "python", "programmer".
+        # Therefore, Doc 2 must score significantly higher.
+        assert scores[1] > scores[0], "Standard stopwords should allow meaningful difference"
+
 
 class TestScorer:
     def test_compute_skill_overlap(self):
