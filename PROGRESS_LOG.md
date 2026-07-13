@@ -202,4 +202,75 @@ tests/test_parser.py::TestNERPipeline::test_json_serializable PASSED
 
 ---
 
-## Phase 6 — QA + Security Review (UPCOMING)
+## Phase 6 — QA + Security Review
+
+### Phase 6B-1: PII Encryption Implementation
+**Status:** ✅ Complete  
+**Date:** 2026-07-13  
+**Commit:** `9165cc2`
+
+### What was built
+- Application-level Fernet encryption for PII fields (email, phone, full_name) and text fields (raw_text, parsed_experience, parsed_projects)
+- Blind index (HMAC-SHA256) on email for case-insensitive deduplication without plaintext exposure
+- `app/services/encryption.py` — encrypt_text, decrypt_text, encrypt_json, decrypt_json, compute_blind_index
+- Migration `7dce4675bffb` drops plaintext columns, adds encrypted columns + email_hash index
+- Candidate ORM model updated with transparent decrypt properties
+- `candidate_service.py` updated to encrypt on ingest and decrypt on match
+- `matches.py` updated to decrypt candidate data for scoring
+- Tests added: `test_ciphertext_at_rest`, `test_raw_text_hash_stability_across_reencryption`
+- README.md updated with PII encryption details and performance cost disclosure
+
+### Git
+- Branch: `main`
+- Commits: `5aec9f8` (PII Encryption implementation), `9165cc2` (Fix key generation and add ciphertext/hash stability tests)
+
+---
+
+## [2026-07-13] Session: Commit preparatory Phase 6B changes and working-directory cleanup
+
+### Actions taken
+- Deleted `verify_keys.py` and `replacements.txt` (forensic artifacts containing previously leaked encryption keys)
+- Added `git_history.txt`, `req_log.txt`, `requirements_pinned_audit.txt` to `.gitignore` as local working notes
+- Confirmed `.env` is gitignored and was never staged
+- Committed 4 logical commits for preparatory changes on top of Phase 6B-1:
+  1. `fb450ed` fix: pin dependency versions and add vulnerability patches
+  2. `341fd1a` test: add explicit httpx timeout to match endpoint tests
+  3. `2ab2bfa` chore: redact leaked keys from .env.example with placeholders
+  4. `fef3f49` chore: remove forensic key-verification artifacts from working directory and ignore scratch notes
+- Verified Docker Desktop started and both containers are healthy
+- Ran full test suite: 66 passed, 0 failures
+- Ran secrets scan on modified files: no live secrets found
+- Pushed all commits to `origin/main` and verified against live remote
+
+### Commands run + raw output
+- `git status` (Step 0): 3 modified + 5 untracked files
+- `git diff` (Step 0): dependency bumps, timeout fix, .env.example redaction
+- `git log --oneline -5` (Step 0): `9165cc2 Phase 6B-1: Fix key generation and add ciphertext/hash stability tests`
+- Docker: `resumeranker-app-1 Running (healthy)`, `resumeranker-db-1 Running (healthy)`
+- Test suite: `66 passed, 5 warnings in 85.83s`
+- Secrets scan: grep across modified files found only placeholder values in .env.example
+- `git log --oneline -5` after commits:
+  ```
+  fef3f49 chore: remove forensic key-verification artifacts from working directory and ignore scratch notes
+  2ab2bfa chore: redact leaked keys from .env.example with placeholders
+  341fd1a test: add explicit httpx timeout to match endpoint tests
+  fb450ed fix: pin dependency versions and add vulnerability patches
+  9165cc2 Phase 6B-1: Fix key generation and add ciphertext/hash stability tests
+  ```
+- `git ls-remote origin main`: verified HEAD matches live remote after push
+
+### Commits
+- `fb450ed` fix: pin dependency versions and add vulnerability patches
+- `341fd1a` test: add explicit httpx timeout to match endpoint tests
+- `2ab2bfa` chore: redact leaked keys from .env.example with placeholders
+- `fef3f49` chore: remove forensic key-verification artifacts from working directory and ignore scratch notes
+
+### Verified against live remote: yes + evidence
+- `git log --oneline -5` after push matches `git ls-remote origin main`
+- All 4 new commits landed on `origin/main`
+
+### Issues / blockers encountered
+- Docker Desktop was not running at session start; started manually and containers became healthy
+- `git commit` failed once with `index.lock` error; resolved by retrying
+- PROGRESS_LOG.md was stale and did not document Phase 6B-1; updated before appending this entry
+---
