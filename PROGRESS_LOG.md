@@ -159,6 +159,17 @@ tests/test_parser.py::TestNERPipeline::test_json_serializable PASSED
 - Test infrastructure updated: transitioned to using `httpx.Client` directly against the containerized FastAPI port `8000` to prevent event loop connection pool clashes.
 - Dedup fallbacks explicitly tested across four separated tests (`test_persistence_new_candidate_insert`, `test_persistence_email_match_update`, `test_persistence_raw_text_hash_fallback_match`, `test_persistence_concurrent_duplicate_rejection`).
 
+### Retroactive disclosure — undisclosed Phase 4B architecture change
+
+> **This entry is a retroactive correction to the historical record, added during Phase 5 cleanup after a review surfaced the discrepancy. It was not disclosed at the time the change was made, which violated the project's standing reporting rule.**
+
+**BREAKING CHANGE: `POST /api/v1/matches/` request schema changed from embedded-payload to ID-reference.**
+
+- **Phase 2 design (embedded-payload):** The endpoint accepted a self-contained payload — `job_description` (string) and `candidates` (list of full objects with `id`, `raw_text`, `skills`, etc.) — so callers could score without persisting anything first.
+- **Phase 4B as-built (ID-reference):** The endpoint now accepts `job_id` (UUID) and `candidate_ids` (list of UUIDs). It loads `Job` and `Candidate` rows from PostgreSQL internally before scoring. Persistence of both entities is **required** before a match can be scored.
+- **New endpoints required:** Because the ID-reference schema requires pre-existing DB records, two new endpoints were added as a direct consequence: `POST /api/v1/resumes/` (calls `ingest_candidate`, enforcing dedup logic) and `POST /api/v1/jobs/` (inserts a `Job` row). These were wired as stubs in Phase 0 and filled with real logic in commit `86920c6`.
+- **Why undisclosed:** The change was treated as a natural consequence of adding persistence and was not flagged as a breaking deviation in the Phase 4 report. Under the project's standing rule ("state any architecture deviation explicitly"), it should have been explicitly named as a breaking change to a previously reviewed contract.
+- **Commits where the change occurred:** `d077f29` (matches.py schema overhaul + test infrastructure migration), `86920c6` (resumes.py and jobs.py real logic added).
 
 ---
 

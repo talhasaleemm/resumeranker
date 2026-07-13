@@ -38,6 +38,7 @@ The system is composed of several cleanly decoupled modules:
 - **No messy/real-world resume tests**: Parsing tests use perfectly formatted dummy documents; real-world multi-column PDFs are not yet tested.
 - **BM25 Stopword Filtering**: Tokenization for BM25 relies on basic whitespace splitting and lowercase; formal stopword filtering (e.g., "and", "the") is missing.
 - **PII Limiting**: While emails and phones are extracted, the system currently lacks anonymization logic. Since raw texts are stored in the DB alongside full names, proper PII redaction capabilities may be needed for production.
+- **No stateless / one-off matching**: `POST /api/v1/matches/` requires both the job and all candidates to already exist as persisted DB records (identified by UUID). There is no endpoint for scoring a raw resume text against a raw job description without first persisting both. This was a deliberate scope decision made implicitly during Phase 4B (embedding persistence into the matches flow) rather than an explicit design choice reviewed and approved at the time. Flagged here as a known gap: callers who want ephemeral scoring must still ingest and persist first.
 
 ## How to Run the Project
 All commands should be executed from the project root (`scratch/resumeranker/`).\
@@ -53,3 +54,4 @@ All commands should be executed from the project root (`scratch/resumeranker/`).
 2. **NO SELF-CERTIFICATION**: Never mark a task as complete without pasting raw terminal output (e.g., from `pytest`, `docker logs`, `curl`) proving it works exactly as required.
 3. **NO SCOPE CREEP**: Do not begin, plan for, or anticipate tasks outside of the explicit checklist provided in the active prompt.
 4. **DOCUMENT UPDATES**: At the end of every phase, `PROJECT_CONTEXT.md` and `PROGRESS_LOG.md` must be updated to reflect newly added modules, closed phases, and architectural shifts.
+5. **DISCLOSE ALL CONTRACT CHANGES EXPLICITLY**: Any change to an existing API request/response schema, database schema, or module public interface — even one that seems like a natural evolution — must be explicitly called out as a deviation in that phase's report. Name it clearly (e.g. "BREAKING CHANGE: `/matches/` request schema changed from embedded-payload to ID-reference"). Do not leave contract changes to be inferred from commit messages or git history. Failure to do this was the exact error made in Phase 4B and is not acceptable going forward.

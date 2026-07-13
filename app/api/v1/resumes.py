@@ -24,5 +24,5 @@ async def upload_resume(upload: ResumeUpload, db: AsyncSession = Depends(get_db)
 
 @router.get("/", summary="List all candidates")
 async def list_candidates():
-    """Placeholder — full implementation in Phase 4."""
-    return {"message": "Resume endpoints coming in Phase 1/4"}
+    """List candidates — not yet implemented."""
+    return {"message": "Candidate listing not yet implemented."}

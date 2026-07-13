@@ -33,5 +33,5 @@ async def create_job(job_in: JobCreate, db: AsyncSession = Depends(get_db)):
 
 @router.get("/", summary="List all jobs")
 async def list_jobs():
-    """Placeholder — full implementation in Phase 4."""
-    return {"message": "Job endpoints coming in Phase 4"}
+    """List jobs — not yet implemented."""
+    return {"message": "Job listing not yet implemented."}
