@@ -79,7 +79,7 @@ async def test_persistence_concurrent_duplicate_rejection():
     
     await test_engine.dispose()
 
-async def test_match_endpoint_append_only():
+async def test_match_results_append_only_in_db():
     import httpx
     BASE_URL = "http://localhost:8000"
     

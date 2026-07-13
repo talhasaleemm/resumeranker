@@ -142,7 +142,7 @@ def test_match_endpoint_single_candidate_without_overlap():
     assert response.json()["matches"][0]["bm25_score"] == 0.0
 
 
-def test_match_endpoint_append_only():
+def test_match_endpoint_accepts_repeated_calls():
     job_id, candidate_ids = setup_data()
     payload = {
         "job_id": job_id,

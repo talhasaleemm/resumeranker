@@ -39,7 +39,8 @@ The system is composed of several cleanly decoupled modules:
 - **PII Limiting**: While emails and phones are extracted, the system currently lacks anonymization logic. Since raw texts are stored in the DB alongside full names, proper PII redaction capabilities may be needed for production.
 
 ## How to Run the Project
-All commands should be executed from the project root (`scratch/resumeranker/`):
+All commands should be executed from the project root (`scratch/resumeranker/`).\
+**Prerequisite (Windows):** Docker Desktop must be running before any `docker-compose` command will work. Launch it via `Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"` or from the Start Menu, and wait for the whale icon in the system tray to show "Docker Desktop is running". The `docker-compose` CLI will fail with a pipe-not-found error if the daemon is not up.
 - **Start Services (Detached)**: `docker-compose up -d`
 - **Rebuild Services**: `docker-compose up -d --build` or `docker-compose build --no-cache`
 - **Check Health**: `curl -s http://localhost:8001/health`

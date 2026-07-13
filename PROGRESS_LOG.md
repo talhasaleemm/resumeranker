@@ -26,12 +26,17 @@
 - `alembic.ini` + `app/migrations/env.py` — async Alembic, DB URL from settings (not hardcoded)
 - `README.md` — tech stack, quick start, dev setup, project structure
 
-### DB Schema (ERD summary)
-- `candidates` — UUID PK, extracted fields, structured_json JSONB, profile_tags TEXT[]
-- `skills` — canonical_name + aliases TEXT[], category
-- `candidate_skills` — join table with confidence + source_context
-- `jobs` — title, description, required_skills TEXT[], preferred_skills TEXT[]
-- `match_results` — tfidf/bm25/skill/final scores + full explanation_log JSONB
+### DB Schema (ERD summary — as originally designed in Phase 0)
+- `candidates` — UUID PK, extracted fields, `structured_json` JSONB, `profile_tags` TEXT[]
+- `skills` — `canonical_name` + `aliases` TEXT[], `category`
+- `candidate_skills` — join table with `confidence` + `source_context`
+- `jobs` — title, description, `required_skills` TEXT[], `preferred_skills` TEXT[]
+- `match_results` — tfidf/bm25/skill/final scores + full `explanation_log` JSONB
+
+> **Schema evolution note (reconciled during Phase 4 review):** The as-built live schema diverges from the original Phase 0 design in three ways:
+> 1. **`skills` + `candidate_skills` tables were never created.** During Phase 4 design review, a normalised join table was judged unnecessary overhead at this project's scale; skills are stored as a flat `parsed_skills TEXT[]` column on `candidates` instead.
+> 2. **`structured_json` JSONB column does not exist.** Structured parsed data is stored via two separate columns — `parsed_experience JSONB` and `parsed_projects JSONB` — for clarity and direct query access.
+> 3. **`profile_tags TEXT[]` was renamed `assigned_tags TEXT[]`** to better reflect that tags are auto-assigned by the Phase 3 tagger module, not submitted by the user.
 
 ### What broke / how fixed
 - Nothing broke in Phase 0 (scaffolding only)
@@ -125,10 +130,6 @@ tests/test_parser.py::TestNERPipeline::test_json_serializable PASSED
 ### Git
 - Branch: `main`
 - Commit: `phase-2: TF-IDF, BM25, Match Scorer pipeline, 7 matching tests passing`
-
----
-
-## Phase 2 — Skill Normalization + TF-IDF/BM25 Matching (UPCOMING)
 
 ---
 
