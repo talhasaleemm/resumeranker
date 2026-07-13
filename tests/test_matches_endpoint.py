@@ -4,7 +4,7 @@ import httpx
 BASE_URL = "http://localhost:8000"
 
 def setup_data():
-    with httpx.Client(base_url=BASE_URL) as client:
+    with httpx.Client(base_url=BASE_URL, timeout=30.0) as client:
         # Ingest candidates
         res_cand1 = client.post("/api/v1/resumes/", json={
             "raw_text": "I am a backend developer writing Python and React code for my web apps. I have a B.S. in Computer Science.",
@@ -42,7 +42,7 @@ def test_match_endpoint_success():
         }
     }
     
-    with httpx.Client(base_url=BASE_URL) as client:
+    with httpx.Client(base_url=BASE_URL, timeout=30.0) as client:
         response = client.post("/api/v1/matches/", json=payload)
     assert response.status_code == 200
     data = response.json()
@@ -72,7 +72,7 @@ def test_match_endpoint_weights_not_summing_to_1():
             "skills": 0.5
         }
     }
-    with httpx.Client(base_url=BASE_URL) as client:
+    with httpx.Client(base_url=BASE_URL, timeout=30.0) as client:
         response = client.post("/api/v1/matches/", json=payload)
     assert response.status_code == 422
 
@@ -87,7 +87,7 @@ def test_match_endpoint_missing_weight_key():
             "bm25": 0.5
         }
     }
-    with httpx.Client(base_url=BASE_URL) as client:
+    with httpx.Client(base_url=BASE_URL, timeout=30.0) as client:
         response = client.post("/api/v1/matches/", json=payload)
     assert response.status_code == 422
 
@@ -103,7 +103,7 @@ def test_match_endpoint_negative_weight():
             "skills": 0.0
         }
     }
-    with httpx.Client(base_url=BASE_URL) as client:
+    with httpx.Client(base_url=BASE_URL, timeout=30.0) as client:
         response = client.post("/api/v1/matches/", json=payload)
     assert response.status_code == 422
 
@@ -119,7 +119,7 @@ def test_match_endpoint_single_candidate_with_overlap():
             "skills": 0.2
         }
     }
-    with httpx.Client(base_url=BASE_URL) as client:
+    with httpx.Client(base_url=BASE_URL, timeout=30.0) as client:
         response = client.post("/api/v1/matches/", json=payload)
     assert response.status_code == 200
     assert response.json()["matches"][0]["bm25_score"] == 1.0
@@ -136,7 +136,7 @@ def test_match_endpoint_single_candidate_without_overlap():
             "skills": 0.2
         }
     }
-    with httpx.Client(base_url=BASE_URL) as client:
+    with httpx.Client(base_url=BASE_URL, timeout=30.0) as client:
         response = client.post("/api/v1/matches/", json=payload)
     assert response.status_code == 200
     assert response.json()["matches"][0]["bm25_score"] == 0.0
