@@ -73,3 +73,8 @@ node_modules/
 *.DS_Store
 ehthumbs.db
 Desktop.ini
+
+# === Local Working Notes / Scratch Artifacts ===
+git_history.txt
+req_log.txt
+requirements_pinned_audit.txt
