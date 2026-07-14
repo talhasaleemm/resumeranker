@@ -274,3 +274,35 @@ tests/test_parser.py::TestNERPipeline::test_json_serializable PASSED
 - `git commit` failed once with `index.lock` error; resolved by retrying
 - PROGRESS_LOG.md was stale and did not document Phase 6B-1; updated before appending this entry
 ---
+
+## [2026-07-14] Session: Finalize Phase 6B-2b Rate Limiter and fix matches variable bug
+
+### Actions taken
+- Diagnosed and fixed the `AttributeError: 'State' object has no attribute 'limiter'` error (which caused 500s in tests) by correctly wiring the limiter to `app.state` in `app/main.py`.
+- Identified and fixed a variable reference bug in `matches.py` (`request.job_id` instead of `match_request.job_id`) introduced when FastAPI's `Request` object was injected.
+- Test suite began failing on 3 tests due to 429 Too Many Requests errors. Root caused this to the tests genuinely violating the strict 10/min production threshold for `/api/v1/resumes/`.
+- Authorized by user to implement a scoped test bypass: Modified `app/rate_limiter.py` to check for an `x-test-bypass: true` header and return a unique UUID key per request. Applied this header solely to the integration tests (`test_matches_endpoint.py` and `test_persistence.py`), specifically keeping it out of `test_rate_limiting.py` so the limiter logic remains actively tested.
+- Ran the full test suite and achieved 70/70 passing tests (66 original tests + 4 rate-limiting tests).
+- Executed `gitleaks` container scan which found no new secrets in the modified tracked files.
+- Committed the changes as 4 separate logical units (CVE dependency updates, wiring fix, matches.py job_id bugfix, and test-bypass implementation) and pushed to remote `main`.
+
+### Commands run + raw output
+- `docker-compose restart app`
+- `docker-compose exec -T app pytest --tb=short`: 70 passed, 6 warnings in 84.47s (0:01:24)
+- `docker run -v ${PWD}:/path zricethezav/gitleaks:latest detect --source="/path" --no-git -v` (found only preexisting placeholder secrets in .env, none in tracked code)
+- `git commit` for the four logical units.
+- `git push origin main`
+
+### Commits
+- `55902c0` chore: Upgrade dependencies for security (CVE fixes)
+- `d3e4724` fix: Rate limiter wiring across app
+- `c74aa50` fix: Correct match_request variable references in matches.py
+- `eaf4038` test: Implement test suite bypass for rate limiter
+
+### Verified against live remote: yes + evidence
+- `git log --oneline -5` matches the commits pushed to origin.
+- `git push origin main` succeeded: `698892f..eaf4038  main -> main`.
+
+### Issues / blockers encountered
+- Rate limits caused the integration test suite to fail immediately upon fixing the wiring, requiring a targeted HTTP header bypass to fix without polluting the test environment or reducing production limits.
+---
