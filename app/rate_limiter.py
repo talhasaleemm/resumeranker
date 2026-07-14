@@ -20,9 +20,6 @@ settings = get_settings()
 def _rate_limit_key_func(request: Request) -> str:
     if not settings.rate_limit_enabled:
         return "disabled"
-    if request.headers.get("x-test-bypass") == "true":
-        import uuid
-        return f"bypass-{uuid.uuid4()}"
     return get_remote_address(request)
 
 

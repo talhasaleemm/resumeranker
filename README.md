@@ -286,6 +286,14 @@ curl -s -X POST http://localhost:8001/api/v1/matches/ \
 ## Key Design Decisions
 
 1. **Append-only match history.** `match_results` rows are never updated or deleted — each call to `POST /api/v1/matches/` writes a new row. This gives a full audit trail of scoring decisions over time, even if the same candidate is re-scored against the same job with different weights.
+  
+  ### 5. API Rate Limiting
+  To prevent brute-force attacks and denial-of-service, all key endpoints are rate-limited via `slowapi`:
+  - **Global default:** 60 requests per minute
+  - **`/api/v1/resumes/`:** 10 requests per minute per IP (to prevent bulk uploads)
+  - **Response:** Returns `429 Too Many Requests` when limits are exceeded.
+  
+  Test suites use `TestClient` with the limiter disabled in memory to prevent rate-limit failures during automated testing without compromising the production configuration.
 
 2. **Literal-string explainability.** `matched_skills`, `missing_skills`, and `tag_evidence` always display the exact strings as submitted by the candidate or the job description (e.g. `"FastAPI"` not `"fastapi"`). This avoids recruiter confusion when canonical forms differ from what a candidate wrote.
 

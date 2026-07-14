@@ -80,23 +80,26 @@ async def test_persistence_concurrent_duplicate_rejection():
     await test_engine.dispose()
 
 async def test_match_results_append_only_in_db():
-    import httpx
-    import time
-    BASE_URL = "http://localhost:8000"
+    from app.main import app
+    from fastapi.testclient import TestClient
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    from sqlalchemy.pool import NullPool
+    from app.config import get_settings
+    from app.database import get_db
+
+    app.state.limiter.enabled = False
+
+    settings = get_settings()
+    test_engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    TestingSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+
+    async def override_get_db():
+        async with TestingSessionLocal() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = override_get_db
     
-    for _ in range(60):
-        try:
-            with httpx.Client(base_url=BASE_URL, timeout=5.0) as health_client:
-                health_resp = health_client.get("/health")
-                if health_resp.status_code == 200:
-                    break
-        except (httpx.ConnectError, httpx.TimeoutException):
-            pass
-        time.sleep(1)
-    else:
-        raise RuntimeError(f"Server at {BASE_URL} did not become ready within 60s")
-    
-    with httpx.Client(base_url=BASE_URL, headers={"x-test-bypass": "true"}) as client:
+    with TestClient(app) as client:
         res_cand = client.post("/api/v1/resumes/", json={
             "raw_text": "I am a persistent developer.",
             "filename": "cand_persist.pdf"
