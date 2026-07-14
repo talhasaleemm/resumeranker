@@ -156,7 +156,7 @@ Open **http://localhost:8001/docs** in your browser (Swagger UI) or **/redoc** f
 docker-compose exec -T app pytest tests/ -v
 ```
 
-Expected: **56 tests, 0 failures** (see [Testing](#testing) section).
+Expected: **70 tests, 0 failures** (see [Testing](#testing) section).
 
 ### Useful commands
 
@@ -323,7 +323,7 @@ These are documented honestly and are on the roadmap for Phase 6 (QA + Security 
 docker-compose exec -T app pytest tests/ -v
 ```
 
-**Current test count: 56 tests, 0 failures** (verified on Python 3.12.13, pytest 8.3.3).
+**Current test count: 70 tests, 0 failures** (verified on Python 3.12.13, pytest 9.0.3).
 
 | Test file | Tests | What is covered |
 |---|---|---|
@@ -356,7 +356,7 @@ resumeranker/
 │   └── main.py           # FastAPI app entry point
 ├── data/
 │   └── PROJECT_CONTEXT.md# Architecture decisions, known gaps, standing rules
-├── tests/                # pytest test suite (56 tests)
+├── tests/                # pytest test suite (70 tests)
 ├── .env.example          # Environment variable template (copy to .env)
 ├── alembic.ini           # Alembic configuration
 ├── docker-compose.yml    # PostgreSQL 16 + FastAPI services
