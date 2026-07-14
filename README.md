@@ -1,6 +1,11 @@
 # ResumeRanker
 
+[![CI](https://github.com/talhasaleemm/resumeranker/actions/workflows/ci.yml/badge.svg)](https://github.com/talhasaleemm/resumeranker/actions/workflows/ci.yml)
+
 **ResumeRanker** is an AI-assisted resume parsing and candidate-matching platform. It ingests PDF and DOCX resumes, extracts structured signals (skills, experience, projects, contact details) using a spaCy NER pipeline, normalises raw skill strings against a canonical taxonomy, and scores each candidate against a job description using a weighted blend of TF-IDF, BM25, and exact skill-overlap algorithms. Every result is persisted in PostgreSQL with a full **explainability log** — showing exactly which skills matched, which were missing, and which role tags were detected and why — so hiring teams can audit every decision rather than trust a black-box score.
+
+### Resume Bullet
+> Built ResumeRanker, a production-hardened resume parsing and candidate-matching platform with spaCy NER, TF-IDF/BM25 scoring, and full explainability logging; secured PII with Fernet encryption and HMAC blind indexing, rate-limited the API, and verified with pip-audit and 70 passing automated tests.
 
 ---
 
@@ -172,6 +177,17 @@ docker-compose exec db psql -U resumeranker -d resumeranker
 
 # Stop everything
 docker-compose down
+```
+
+---
+
+## Quick Demo
+
+You can run the included demo script to automatically ingest synthetic resumes and job descriptions from `data/samples/`, and run the matching engine to see the output:
+
+```bash
+# Must be run while the docker-compose stack is up
+docker-compose exec app python -m scripts.demo
 ```
 
 ---
