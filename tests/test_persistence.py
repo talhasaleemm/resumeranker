@@ -81,9 +81,22 @@ async def test_persistence_concurrent_duplicate_rejection():
 
 async def test_match_results_append_only_in_db():
     import httpx
+    import time
     BASE_URL = "http://localhost:8000"
     
-    with httpx.Client(base_url=BASE_URL) as client:
+    for _ in range(60):
+        try:
+            with httpx.Client(base_url=BASE_URL, timeout=5.0) as health_client:
+                health_resp = health_client.get("/health")
+                if health_resp.status_code == 200:
+                    break
+        except (httpx.ConnectError, httpx.TimeoutException):
+            pass
+        time.sleep(1)
+    else:
+        raise RuntimeError(f"Server at {BASE_URL} did not become ready within 60s")
+    
+    with httpx.Client(base_url=BASE_URL, headers={"x-test-bypass": "true"}) as client:
         res_cand = client.post("/api/v1/resumes/", json={
             "raw_text": "I am a persistent developer.",
             "filename": "cand_persist.pdf"

@@ -1,10 +1,24 @@
 import pytest
 import httpx
+import time
 
 BASE_URL = "http://localhost:8000"
 
+def wait_for_server(base_url: str = BASE_URL, max_retries: int = 60, delay: float = 1.0):
+    for _ in range(max_retries):
+        try:
+            with httpx.Client(base_url=base_url, timeout=5.0) as client:
+                resp = client.get("/health")
+                if resp.status_code == 200:
+                    return
+        except (httpx.ConnectError, httpx.TimeoutException):
+            pass
+        time.sleep(delay)
+    raise RuntimeError(f"Server at {base_url} did not become ready within {max_retries * delay}s")
+
 def setup_data():
-    with httpx.Client(base_url=BASE_URL, timeout=30.0) as client:
+    wait_for_server()
+    with httpx.Client(base_url=BASE_URL, timeout=30.0, headers={"x-test-bypass": "true"}) as client:
         # Ingest candidates
         res_cand1 = client.post("/api/v1/resumes/", json={
             "raw_text": "I am a backend developer writing Python and React code for my web apps. I have a B.S. in Computer Science.",
@@ -42,7 +56,7 @@ def test_match_endpoint_success():
         }
     }
     
-    with httpx.Client(base_url=BASE_URL, timeout=30.0) as client:
+    with httpx.Client(base_url=BASE_URL, timeout=30.0, headers={"x-test-bypass": "true"}) as client:
         response = client.post("/api/v1/matches/", json=payload)
     assert response.status_code == 200
     data = response.json()
@@ -72,7 +86,7 @@ def test_match_endpoint_weights_not_summing_to_1():
             "skills": 0.5
         }
     }
-    with httpx.Client(base_url=BASE_URL, timeout=30.0) as client:
+    with httpx.Client(base_url=BASE_URL, timeout=30.0, headers={"x-test-bypass": "true"}) as client:
         response = client.post("/api/v1/matches/", json=payload)
     assert response.status_code == 422
 
@@ -87,7 +101,7 @@ def test_match_endpoint_missing_weight_key():
             "bm25": 0.5
         }
     }
-    with httpx.Client(base_url=BASE_URL, timeout=30.0) as client:
+    with httpx.Client(base_url=BASE_URL, timeout=30.0, headers={"x-test-bypass": "true"}) as client:
         response = client.post("/api/v1/matches/", json=payload)
     assert response.status_code == 422
 
@@ -103,7 +117,7 @@ def test_match_endpoint_negative_weight():
             "skills": 0.0
         }
     }
-    with httpx.Client(base_url=BASE_URL, timeout=30.0) as client:
+    with httpx.Client(base_url=BASE_URL, timeout=30.0, headers={"x-test-bypass": "true"}) as client:
         response = client.post("/api/v1/matches/", json=payload)
     assert response.status_code == 422
 
@@ -119,7 +133,7 @@ def test_match_endpoint_single_candidate_with_overlap():
             "skills": 0.2
         }
     }
-    with httpx.Client(base_url=BASE_URL, timeout=30.0) as client:
+    with httpx.Client(base_url=BASE_URL, timeout=30.0, headers={"x-test-bypass": "true"}) as client:
         response = client.post("/api/v1/matches/", json=payload)
     assert response.status_code == 200
     assert response.json()["matches"][0]["bm25_score"] == 1.0
@@ -136,7 +150,7 @@ def test_match_endpoint_single_candidate_without_overlap():
             "skills": 0.2
         }
     }
-    with httpx.Client(base_url=BASE_URL, timeout=30.0) as client:
+    with httpx.Client(base_url=BASE_URL, timeout=30.0, headers={"x-test-bypass": "true"}) as client:
         response = client.post("/api/v1/matches/", json=payload)
     assert response.status_code == 200
     assert response.json()["matches"][0]["bm25_score"] == 0.0
@@ -148,7 +162,7 @@ def test_match_endpoint_accepts_repeated_calls():
         "job_id": job_id,
         "candidate_ids": [candidate_ids[0]]
     }
-    with httpx.Client(base_url=BASE_URL) as client:
+    with httpx.Client(base_url=BASE_URL, headers={"x-test-bypass": "true"}) as client:
         res1 = client.post("/api/v1/matches/", json=payload)
         assert res1.status_code == 200
         res2 = client.post("/api/v1/matches/", json=payload)
