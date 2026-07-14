@@ -369,4 +369,4 @@ resumeranker/
 
 ## License
 
-This project is for portfolio and demonstration purposes.
+This project is licensed under the [MIT License](LICENSE). Note that it was originally built for portfolio and demonstration purposes.
