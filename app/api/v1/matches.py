@@ -53,12 +53,12 @@ async def match_candidates(request: Request, match_request: MatchRequest, db: As
     settings = get_settings()
 
     # Load job
-    job = await db.get(Job, request.job_id)
+    job = await db.get(Job, match_request.job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
     # Load candidates
-    stmt = select(Candidate).where(Candidate.id.in_(request.candidate_ids))
+    stmt = select(Candidate).where(Candidate.id.in_(match_request.candidate_ids))
     res = await db.execute(stmt)
     candidates_db = res.scalars().all()
     if not candidates_db:
@@ -88,14 +88,14 @@ async def match_candidates(request: Request, match_request: MatchRequest, db: As
     }
 
     try:
-        if request.weights:
-            settings.tfidf_weight = request.weights.tfidf
-            settings.bm25_weight = request.weights.bm25
-            settings.skill_weight = request.weights.skills
+        if match_request.weights:
+            settings.tfidf_weight = match_request.weights.tfidf
+            settings.bm25_weight = match_request.weights.bm25
+            settings.skill_weight = match_request.weights.skills
             weights_used = {
-                "tfidf": request.weights.tfidf,
-                "bm25": request.weights.bm25,
-                "skills": request.weights.skills
+                "tfidf": match_request.weights.tfidf,
+                "bm25": match_request.weights.bm25,
+                "skills": match_request.weights.skills
             }
 
         results = score_candidates(
