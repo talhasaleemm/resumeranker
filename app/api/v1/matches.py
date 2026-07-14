@@ -1,11 +1,12 @@
 """
 app/api/v1/matches.py — Match/ranking endpoint (Phase 2).
+Phase 6B-2b: Rate limiting added.
 """
 from typing import List, Dict, Any, Optional
 import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel, model_validator
 
 from app.database import get_db
@@ -15,6 +16,7 @@ from app.models.match import MatchResult
 from app.services.matching.scorer import score_candidates
 from app.services.encryption import decrypt_text, decrypt_json
 from app.config import get_settings
+from app.rate_limiter import limiter
 
 router = APIRouter(prefix="/matches", tags=["matches"])
 
@@ -43,7 +45,8 @@ class MatchRequest(BaseModel):
 
 
 @router.post("/")
-async def match_candidates(request: MatchRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("60/minute")
+async def match_candidates(request: Request, match_request: MatchRequest, db: AsyncSession = Depends(get_db)):
     """
     Computes match scores between a job and candidates, loading from DB and persisting results.
     """

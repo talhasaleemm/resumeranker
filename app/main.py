@@ -2,6 +2,7 @@
 app/main.py — ResumeRanker FastAPI application entry point.
 
 Phase 0: Health check + router registration skeleton.
+Phase 6B-2b: Rate limiting via slowapi.
 """
 import logging
 import time
@@ -10,9 +11,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 
 from app.api.v1 import resumes, jobs, matches
 from app.config import get_settings
+from app.rate_limiter import limiter, _custom_rate_limit_handler
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -44,6 +47,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.state.limiter = limiter
+
 # ---------------------------------------------------------------------------
 # Middleware
 # ---------------------------------------------------------------------------
@@ -54,6 +59,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_exception_handler(RateLimitExceeded, _custom_rate_limit_handler)
 
 
 @app.middleware("http")
