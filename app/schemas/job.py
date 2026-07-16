@@ -9,9 +9,9 @@ from pydantic import BaseModel, Field
 
 class JobCreate(BaseModel):
     title: str = Field(..., min_length=2, max_length=500)
-    description: str = Field(..., min_length=10)
-    required_skills: list[str] = Field(default_factory=list)
-    preferred_skills: list[str] = Field(default_factory=list)
+    description: str = Field(..., min_length=10, max_length=50000)
+    required_skills: list[str] = Field(default_factory=list, max_length=100)
+    preferred_skills: list[str] = Field(default_factory=list, max_length=100)
 
 
 class JobOut(BaseModel):

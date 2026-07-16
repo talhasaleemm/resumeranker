@@ -10,15 +10,10 @@ from fastapi import APIRouter, Depends, Request
 
 from app.database import get_db
 from app.models.job import Job
+from app.schemas.job import JobCreate
 from app.rate_limiter import limiter
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
-
-class JobCreate(BaseModel):
-    title: str
-    description: str
-    required_skills: List[str] = []
-    preferred_skills: List[str] = []
 
 @router.post("/", summary="Create a new job")
 @limiter.limit("10/minute")
