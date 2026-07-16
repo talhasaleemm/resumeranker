@@ -4,7 +4,7 @@ Wired up in Phase 0 so FastAPI router registration works.
 Real parsing logic added in Phase 1.
 Phase 6B-2b: Rate limiting added.
 """
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import APIRouter, Depends, Request
 
@@ -15,8 +15,8 @@ from app.rate_limiter import limiter
 router = APIRouter(prefix="/resumes", tags=["resumes"])
 
 class ResumeUpload(BaseModel):
-    raw_text: str
-    filename: str = "unknown"
+    raw_text: str = Field(..., max_length=100000)
+    filename: str = Field("unknown", max_length=255)
 
 @router.post("/", summary="Ingest a candidate resume")
 @limiter.limit("10/minute")
