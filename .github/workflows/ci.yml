@@ -33,8 +33,8 @@ jobs:
       POSTGRES_USER: resumeranker
       POSTGRES_PASSWORD: devpassword123
       DATABASE_URL: postgresql+asyncpg://resumeranker:devpassword123@127.0.0.1:5432/resumeranker
-      ENCRYPTION_KEY: "[REDACTED_DEAD_ENCRYPTION_KEY]"
-      BLIND_INDEX_KEY: "[REDACTED_DEAD_BLIND_INDEX_KEY]"
+      ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+      BLIND_INDEX_KEY: ${{ secrets.BLIND_INDEX_KEY }}
 
     steps:
     - uses: actions/checkout@v4
