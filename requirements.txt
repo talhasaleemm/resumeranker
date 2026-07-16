@@ -64,6 +64,5 @@ pdf2image==1.17.0
 Pillow==10.4.0
 
 # --- Authentication ---
-argon2-cffi==23.1.0
 passlib[argon2]==1.7.4
 PyJWT==2.8.0

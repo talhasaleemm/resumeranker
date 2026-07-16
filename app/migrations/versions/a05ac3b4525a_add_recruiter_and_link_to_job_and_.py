@@ -48,13 +48,13 @@ def upgrade() -> None:
     # 2. Insert default recruiter
     import uuid
     from datetime import datetime, timezone
-    system_recruiter_id = uuid.uuid4()
+    system_recruiter_id = uuid.UUID('00000000-0000-0000-0000-000000000000')
     # Dummy argon2 hash for password 'system'
-    dummy_hash = "$argon2id$v=19$m=65536,t=3,p=4$R3Vlc3NIb3dJRGV2ZWxvcGVkVGhpcw$B2i7U2nB1yJ9iG/U6N7KjwzT2R0H1gD9m6VwZ5sLzXo"
+    dummy_hash = "!"
     now = datetime.now(timezone.utc)
     op.execute(
         f"INSERT INTO recruiters (id, email, hashed_password, is_active, created_at, updated_at) "
-        f"VALUES ('{system_recruiter_id}', 'system@resumeranker.local', '{dummy_hash}', true, '{now}', '{now}')"
+        f"VALUES ('{system_recruiter_id}', 'system@resumeranker.local', '{dummy_hash}', false, '{now}', '{now}')"
     )
 
     # 3. Update existing records

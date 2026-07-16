@@ -4,8 +4,9 @@ app/api/v1/auth.py — Authentication endpoints.
 from datetime import timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
+from app.rate_limiter import limiter
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
@@ -23,7 +24,9 @@ from app.services.auth_service import (
 router = APIRouter()
 
 @router.post("/register", response_model=RecruiterResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/minute")
 async def register(
+    request: Request,
     recruiter_in: RecruiterCreate, session: AsyncSession = Depends(get_db)
 ) -> Recruiter:
     """Register a new recruiter."""
@@ -52,7 +55,9 @@ async def register(
     return new_recruiter
 
 @router.post("/login", response_model=Token)
+@limiter.limit("10/minute")
 async def login(
+    request: Request,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     session: AsyncSession = Depends(get_db)
 ) -> Token:

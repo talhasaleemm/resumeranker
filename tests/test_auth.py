@@ -1,13 +1,27 @@
 import pytest
 import uuid
-from httpx import AsyncClient, ASGITransport
+from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from sqlalchemy.pool import NullPool
+from app.config import get_settings
+from app.database import get_db
 from app.main import app
 
-@pytest.mark.asyncio
-async def test_register_recruiter():
+settings = get_settings()
+test_engine = create_async_engine(settings.database_url, poolclass=NullPool)
+TestingSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+
+async def override_get_db():
+    async with TestingSessionLocal() as session:
+        yield session
+
+app.dependency_overrides[get_db] = override_get_db
+
+def test_register_recruiter():
+    app.state.limiter.enabled = False
     email = f"new_{uuid.uuid4()}@test.com"
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.post("/api/v1/auth/register", json={
+    with TestClient(app) as client:
+        response = client.post("/api/v1/auth/register", json={
             "email": email,
             "password": "securepassword123"
         })
@@ -17,30 +31,30 @@ async def test_register_recruiter():
     assert "id" in data
     assert data["is_active"] is True
 
-@pytest.mark.asyncio
-async def test_register_duplicate_email():
+def test_register_duplicate_email():
+    app.state.limiter.enabled = False
     email = f"dup_{uuid.uuid4()}@test.com"
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        await ac.post("/api/v1/auth/register", json={
+    with TestClient(app) as client:
+        client.post("/api/v1/auth/register", json={
             "email": email,
             "password": "securepassword123"
         })
-        response = await ac.post("/api/v1/auth/register", json={
+        response = client.post("/api/v1/auth/register", json={
             "email": email,
             "password": "securepassword123"
         })
     assert response.status_code == 400
     assert response.json()["detail"] == "Email already registered"
 
-@pytest.mark.asyncio
-async def test_login_success():
+def test_login_success():
+    app.state.limiter.enabled = False
     email = f"login_{uuid.uuid4()}@test.com"
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        await ac.post("/api/v1/auth/register", json={
+    with TestClient(app) as client:
+        client.post("/api/v1/auth/register", json={
             "email": email,
             "password": "securepassword123"
         })
-        response = await ac.post("/api/v1/auth/login", data={
+        response = client.post("/api/v1/auth/login", data={
             "username": email,
             "password": "securepassword123"
         })
@@ -49,11 +63,33 @@ async def test_login_success():
     assert "access_token" in data
     assert data["token_type"] == "bearer"
 
-@pytest.mark.asyncio
-async def test_login_failure():
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.post("/api/v1/auth/login", data={
+def test_login_failure():
+    app.state.limiter.enabled = False
+    with TestClient(app) as client:
+        response = client.post("/api/v1/auth/login", data={
             "username": f"wrong_{uuid.uuid4()}@test.com",
             "password": "wrongpassword"
         })
     assert response.status_code == 401
+
+def test_system_recruiter_cannot_login():
+    app.state.limiter.enabled = False
+    with TestClient(app) as client:
+        # The system recruiter was created in the migration with email "system@resumeranker.local"
+        response = client.post("/api/v1/auth/login", data={
+            "username": "system@resumeranker.local",
+            "password": "systempassword"
+        })
+    # Since its password hash is "!", any password should fail to verify
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Incorrect email or password"
+
+    # Also test that it cannot authenticate even if we force a token (to test get_current_active_recruiter)
+    from app.services.auth_service import create_access_token
+    token = create_access_token(data={"sub": "system@resumeranker.local"})
+    
+    # We must use an endpoint protected by get_current_active_recruiter
+    with TestClient(app) as client:
+        response = client.post("/api/v1/jobs/", json={"title": "foo", "description": "some long description here", "required_skills": []}, headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Inactive user"
