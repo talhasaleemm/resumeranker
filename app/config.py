@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     # Security
     ENCRYPTION_KEY: str = ""
     BLIND_INDEX_KEY: str = ""
+    
+    # JWT Authentication
+    jwt_secret_key: str
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 30
 
     # PostgreSQL
     postgres_host: str = "db"

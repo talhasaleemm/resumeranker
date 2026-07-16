@@ -30,9 +30,9 @@ class Skill(Base):
     category: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Relationships
-    candidate_skills: Mapped[list["CandidateSkill"]] = relationship(  # type: ignore[name-defined]
-        "CandidateSkill", back_populates="skill"
-    )
+    # candidate_skills: Mapped[list["CandidateSkill"]] = relationship(  # type: ignore[name-defined]
+    #     "CandidateSkill", back_populates="skill"
+    # )
 
     def __repr__(self) -> str:
         return f"<Skill canonical={self.canonical_name!r}>"

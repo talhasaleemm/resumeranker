@@ -22,8 +22,9 @@ class TestTryOcr:
     ) -> None:
         """_try_ocr is called ONLY when both PyMuPDF and pdfplumber return < 50 chars."""
         with patch("app.services.parser.pdf_parser._try_ocr", return_value="") as mock_ocr:
-            extract_text_from_pdf(b"fake-pdf-bytes", filename="test.pdf")
-            mock_ocr.assert_called_once()
+            with pytest.raises(ParseError):
+                extract_text_from_pdf(b"fake-pdf-bytes", filename="test.pdf")
+            mock_ocr.assert_called_once_with(b"fake-pdf-bytes", "test.pdf")
 
     @patch("app.services.parser.pdf_parser._try_pymupdf", return_value="a" * 60)
     @patch("app.services.parser.pdf_parser._try_pdfplumber", return_value="b" * 60)

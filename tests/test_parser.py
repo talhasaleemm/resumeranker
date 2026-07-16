@@ -474,8 +474,9 @@ class TestEdgeCaseParser:
         from app.services.parser.pdf_parser import extract_text_from_pdf, ParseError
         import pytest
         data = _load_pdf_bytes("resume_scanned.pdf")
-        with pytest.raises(ParseError):
-            extract_text_from_pdf(data, "resume_scanned.pdf")
+        # Now that we have OCR (Phase 8), scanned PDFs should extract successfully!
+        text = extract_text_from_pdf(data, filename="resume_scanned.pdf")
+        assert len(text) > 50
 
     def test_missing_sections_pdf(self):
         """d. Missing expected sections (e.g. no EXPERIENCE)."""

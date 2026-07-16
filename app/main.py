@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
-from app.api.v1 import resumes, jobs, matches, tasks
+from app.api.v1 import resumes, jobs, matches, tasks, auth
 from app.config import get_settings
 from app.rate_limiter import limiter, _custom_rate_limit_handler
 
@@ -85,6 +85,7 @@ async def add_request_timing(request: Request, call_next):
 # ---------------------------------------------------------------------------
 API_V1_PREFIX = "/api/v1"
 
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(resumes.router, prefix=API_V1_PREFIX)
 app.include_router(jobs.router, prefix=API_V1_PREFIX)
 app.include_router(matches.router, prefix=API_V1_PREFIX)

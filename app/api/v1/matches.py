@@ -21,6 +21,8 @@ from app.rate_limiter import limiter
 from app.schemas.responses import MatchResponse, MatchCandidate
 from app.worker import score_candidates_task
 from fastapi.responses import JSONResponse
+from app.models.recruiter import Recruiter
+from app.services.auth_service import get_current_active_recruiter
 
 router = APIRouter(prefix="/matches", tags=["matches"])
 
@@ -50,7 +52,12 @@ class MatchRequest(BaseModel):
 
 @router.post("/", response_model=MatchResponse)
 @limiter.limit("60/minute")
-async def match_candidates(request: Request, match_request: MatchRequest, db: AsyncSession = Depends(get_db)):
+async def match_candidates(
+    request: Request, 
+    match_request: MatchRequest, 
+    db: AsyncSession = Depends(get_db),
+    current_user: Recruiter = Depends(get_current_active_recruiter)
+):
     """
     Submit candidates for asynchronous matching against a job.
     Returns 202 Accepted with a task_id for polling.
@@ -58,12 +65,18 @@ async def match_candidates(request: Request, match_request: MatchRequest, db: As
     job = await db.get(Job, match_request.job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    if job.recruiter_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this job")
 
     stmt = select(Candidate).where(Candidate.id.in_(match_request.candidate_ids))
     res = await db.execute(stmt)
     candidates_db = res.scalars().all()
     if not candidates_db:
         raise HTTPException(status_code=404, detail="No candidates found")
+        
+    for c in candidates_db:
+        if c.recruiter_id != current_user.id:
+            raise HTTPException(status_code=403, detail=f"Not authorized to access candidate {c.id}")
 
     candidate_ids_str = [str(cid) for cid in match_request.candidate_ids]
     task = score_candidates_task.delay(

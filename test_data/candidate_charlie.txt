@@ -1,0 +1,41 @@
+CHARLIE "CHAD" PATEL
+charlie.patel@email.com | (555) 456-7890 | linkedin.com/in/charliepatel
+
+SUMMARY
+DevOps Engineer with 7+ years of experience bridging development and operations.
+Expertise in containerization, infrastructure-as-code, CI/CD pipelines, and
+cloud-native architectures on AWS and Azure.
+
+EXPERIENCE
+Staff DevOps Engineer - EnterpriseCloud Ltd. (2019 - Present)
+- Architected Kubernetes clusters on EKS serving 200+ microservices.
+- Reduced deployment time from 45 minutes to 4 minutes via GitOps with ArgoCD.
+- Built Terraform modules managing $2M+ in cloud infrastructure across 3 accounts.
+- Implemented comprehensive monitoring stack (Prometheus, Grafana, OpsGenie)
+  reducing MTTR by 70%.
+
+DevOps Engineer - SaaS Platform Inc. (2017 - 2019)
+- Migrated on-premises workloads to AWS using Docker and ECS.
+- Automated provisioning with CloudFormation and Ansible.
+- Set up centralized logging with ELK stack (Elasticsearch, Logstash, Kibana).
+
+Systems Administrator - ManagedHosting Co. (2015 - 2017)
+- Administered 500+ Linux servers running RHEL/CentOS.
+- Automated routine maintenance with Bash and Python scripts.
+- Maintained 99.99% uptime SLA for customer-facing infrastructure.
+
+SKILLS
+Docker, Kubernetes, Helm, Terraform, Ansible, AWS, Azure, GCP, Linux,
+Bash, Python, Go, Jenkins, GitHub Actions, GitLab CI, ArgoCD, Prometheus,
+Grafana, ELK Stack, Splunk, Nginx, HAProxy, Istio, Vault, PostgreSQL,
+Redis, RabbitMQ, Kafka, CloudFormation, CDK, Pulumi, REST APIs,
+On-call rotation, Incident Management, SLO/SLI/SLA, Cost Optimization
+
+EDUCATION
+B.S. Information Technology - Polytechnic Institute (2015)
+- Concentration: Network Operations and Security
+
+CERTIFICATIONS
+- AWS DevOps Engineer - Professional (2022)
+- Certified Kubernetes Administrator (CKA) (2021)
+- HashiCorp Certified: Terraform Associate (2023)

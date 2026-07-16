@@ -14,6 +14,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import ForeignKey
 
 from app.database import Base
 from app.services.encryption import decrypt_text, decrypt_json
@@ -28,6 +29,9 @@ class Candidate(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    recruiter_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("recruiters.id", ondelete="CASCADE"), nullable=False
     )
     email_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     email_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -60,8 +64,11 @@ class Candidate(Base):
     )
 
     # Relationships
+    recruiter: Mapped["Recruiter"] = relationship(  # type: ignore[name-defined]
+        "Recruiter", back_populates="candidates"
+    )
     match_results: Mapped[list["MatchResult"]] = relationship(  # type: ignore[name-defined]
-        "MatchResult", back_populates="candidate"
+        "MatchResult", back_populates="candidate", cascade="all, delete-orphan"
     )
 
     __table_args__ = (

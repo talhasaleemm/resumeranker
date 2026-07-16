@@ -67,17 +67,55 @@ def _utcnow() -> datetime:
 # Tasks
 # ---------------------------------------------------------------------------
 @celery_app.task(bind=True, name="ingest_candidate")
-def ingest_candidate_task(self, raw_text: str, filename: str = "unknown") -> dict:
+def ingest_candidate_task(self, file_path: str, original_filename: str, recruiter_id: str) -> dict:
     """
-    Parse a resume, encrypt PII, apply dedup logic, and persist to PostgreSQL.
+    Parse a resume from a file, extract text, encrypt PII, apply dedup logic, and persist to PostgreSQL.
     Runs in the Celery worker to avoid blocking the API event loop.
+    Deletes the temporary file after processing.
     """
     db: Session = SessionLocal()
+    import os
+    
+    # 1. Read and extract text
+    if not os.path.exists(file_path):
+        return {"status": "failure", "error": "File not found", "filename": original_filename}
+        
     try:
-        logger.info("Worker: ingesting candidate from '%s' (%d chars)", filename, len(raw_text))
+        with open(file_path, "rb") as f:
+            file_bytes = f.read()
+            
+        if original_filename.lower().endswith(".pdf"):
+            from app.services.parser.pdf_parser import extract_text_from_pdf
+            raw_text = extract_text_from_pdf(file_bytes, original_filename)
+        elif original_filename.lower().endswith(".docx"):
+            from app.services.parser.docx_parser import extract_text_from_docx
+            raw_text = extract_text_from_docx(file_bytes, original_filename)
+        else:
+            raise ValueError(f"Unsupported file extension: {original_filename}")
+            
+        if not raw_text or len(raw_text.strip()) < 50:
+            raise ValueError("Extracted text is empty or near-empty")
+            
+    except Exception as exc:
+        logger.exception("Worker: failed to extract text from '%s': %s", original_filename, exc)
+        return {
+            "status": "failure",
+            "error": str(exc),
+            "filename": original_filename,
+        }
+    finally:
+        # Delete the temp file to ensure no PII sits on disk
+        try:
+            os.remove(file_path)
+        except OSError:
+            logger.warning("Worker: failed to delete temp file %s", file_path)
+
+    # 2. Parse and Persist
+    try:
+        logger.info("Worker: ingesting candidate from '%s' (%d chars)", original_filename, len(raw_text))
 
         raw_text_hash = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
-        profile = parse_resume(raw_text, filename=filename)
+        profile = parse_resume(raw_text, filename=original_filename)
 
         email = profile.get("email")
         phone = profile.get("phone")
@@ -95,7 +133,7 @@ def ingest_candidate_task(self, raw_text: str, filename: str = "unknown") -> dic
         if email_hash:
             candidate = (
                 db.query(Candidate)
-                .filter(Candidate.email_hash == email_hash)
+                .filter(Candidate.email_hash == email_hash, Candidate.recruiter_id == recruiter_id)
                 .first()
             )
 
@@ -103,7 +141,7 @@ def ingest_candidate_task(self, raw_text: str, filename: str = "unknown") -> dic
         if not candidate:
             candidate = (
                 db.query(Candidate)
-                .filter(Candidate.raw_text_hash == raw_text_hash)
+                .filter(Candidate.raw_text_hash == raw_text_hash, Candidate.recruiter_id == recruiter_id)
                 .first()
             )
 
@@ -124,13 +162,15 @@ def ingest_candidate_task(self, raw_text: str, filename: str = "unknown") -> dic
             candidate.updated_at = _utcnow()
             action = "updated"
         else:
+            logger.info("Worker: Creating new candidate profile for '%s'", original_filename)
             # Insert new candidate
             candidate = Candidate(
+                recruiter_id=recruiter_id,
                 email_hash=email_hash,
-                email_encrypted=encrypt_text(email),
+                email_encrypted=encrypt_text(email) if email else None,
                 raw_text_hash=raw_text_hash,
-                phone_encrypted=encrypt_text(phone),
-                full_name_encrypted=encrypt_text(full_name),
+                phone_encrypted=encrypt_text(phone) if phone else None,
+                full_name_encrypted=encrypt_text(full_name) if full_name else None,
                 raw_text_encrypted=encrypt_text(raw_text),
                 parsed_skills=parsed_skills,
                 parsed_experience_encrypted=encrypt_json(parsed_experience),
@@ -155,11 +195,11 @@ def ingest_candidate_task(self, raw_text: str, filename: str = "unknown") -> dic
 
     except Exception as exc:
         db.rollback()
-        logger.exception("Worker: failed to ingest candidate from '%s': %s", filename, exc)
+        logger.exception("Worker: failed to ingest candidate from '%s': %s", original_filename, exc)
         return {
             "status": "failure",
             "error": str(exc),
-            "filename": filename,
+            "filename": original_filename,
         }
     finally:
         db.close()

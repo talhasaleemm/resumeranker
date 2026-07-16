@@ -1,0 +1,40 @@
+BOB CHEN
+bob.chen@email.com | (555) 987-6543 | linkedin.com/in/bobchen
+
+SUMMARY
+Backend Engineer specializing in Python, FastAPI, and distributed systems.
+6+ years of experience designing scalable APIs, optimizing database performance,
+and building resilient microservices.
+
+EXPERIENCE
+Senior Backend Engineer - DataStream Systems (2020 - Present)
+- Designed and shipped 3 FastAPI microservices handling 50K+ requests/minute.
+- Reduced PostgreSQL query latency by 60% through indexing, connection pooling,
+  and query optimization.
+- Implemented event-driven architecture with Kafka for real-time analytics pipeline.
+- Led migration from Celery 4 to Celery 5, reducing task queue latency by 25%.
+
+Software Engineer - CloudNetworks (2018 - 2020)
+- Built RESTful APIs with Django and Django REST Framework.
+- Integrated Stripe webhooks and PostgreSQL triggers for financial reporting.
+- Containerized services with Docker and deployed via AWS ECS.
+
+Backend Developer - FinTech Startup (2016 - 2018)
+- Developed payment processing endpoints using Python and Redis.
+- Wrote comprehensive pytest suites achieving 92% code coverage.
+- Participated in on-call rotations and incident response for production outages.
+
+SKILLS
+Python, FastAPI, Django, Flask, SQLAlchemy, Alembic, PostgreSQL, Redis,
+Celery, Kafka, Docker, Kubernetes, AWS (EC2, ECS, RDS), gRPC, GraphQL,
+REST APIs, OAuth2, JWT, pytest, CI/CD, GitHub Actions, Terraform,
+Datadog, Prometheus, Grafana, Linux, Bash, Git, Microservices
+
+EDUCATION
+M.S. Computer Science - State University (2016)
+- Focus: Distributed Systems and Database Optimization
+- Teaching assistant for Graduate Databases course
+
+CERTIFICATIONS
+- AWS Solutions Architect - Associate (2022)
+- Certified Kubernetes Administrator (CKA) (2023)

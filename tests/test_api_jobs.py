@@ -1,6 +1,16 @@
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app
+from app.database import get_db
+from app.models.job import Job
+import uuid
+from app.models.recruiter import Recruiter
+from app.services.auth_service import get_current_active_recruiter
+
+async def override_get_current_active_recruiter():
+    return Recruiter(id=uuid.UUID('00000000-0000-0000-0000-000000000000'), email="test@test.com", is_active=True)
+
+app.dependency_overrides[get_current_active_recruiter] = override_get_current_active_recruiter
 
 def test_job_create_description_too_short():
     """

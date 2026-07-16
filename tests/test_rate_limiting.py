@@ -60,12 +60,12 @@ def _create_test_app() -> tuple[FastAPI, Limiter]:
     @resume_router.post("/", tags=["resumes"])
     @limiter.limit("10/minute")
     async def upload_resume(request: Request, upload: ResumeUpload):
-        return {"status": "success", "candidate_id": str(uuid.uuid4())}
+        return {"status": "success", "candidate_id": str(uuid.UUID('00000000-0000-0000-0000-000000000000'))}
 
     @job_router.post("/", tags=["jobs"])
     @limiter.limit("10/minute")
     async def create_job(request: Request):
-        return {"status": "success", "job_id": str(uuid.uuid4())}
+        return {"status": "success", "job_id": str(uuid.UUID('00000000-0000-0000-0000-000000000000'))}
 
     @match_router.post("/", tags=["matches"])
     @limiter.limit("60/minute")
@@ -109,7 +109,7 @@ def test_match_rate_limit_triggers_429():
     app, limiter = _create_test_app()
     client = TestClient(app)
 
-    payload = {"job_id": str(uuid.uuid4()), "candidate_ids": [str(uuid.uuid4())]}
+    payload = {"job_id": str(uuid.UUID('00000000-0000-0000-0000-000000000000')), "candidate_ids": [str(uuid.UUID('00000000-0000-0000-0000-000000000000'))]}
     for _ in range(60):
         resp = client.post("/api/v1/matches/", json=payload)
         assert resp.status_code == 200

@@ -42,6 +42,9 @@ def score_candidates(
         - raw_text: str (for tfidf/bm25)
         - skills: List[str] (for exact skill match)
         
+    # TODO(scale): Implement pgvector or Qdrant for semantic similarity searching 
+    # instead of doing purely in-memory TF-IDF and BM25 on the fly here.
+        
     Returns a list of dicts containing the match_result for each candidate.
     """
     settings = get_settings()

@@ -352,3 +352,17 @@ eplacements*.txt) deleted from working directory after verification
 - `app/config.py` gains `REDIS_URL` for Celery broker/backend configuration.
 - `app/worker.py` initializes the Celery app, creates an isolated sync SQLAlchemy session for the worker, and exposes `ingest_candidate_task` and `score_candidates_task`.
 - PII encryption and blind-index dedup logic remain intact inside the worker database transactions.
+
+---
+
+## Phase 10 -- Next.js Frontend & Async Polling
+- Bootstrapped a Next.js 14 application in `frontend/` using the App Router, TypeScript, and Tailwind CSS.
+- Configured `next.config.ts` with API rewrites to proxy `/api/*` requests to `http://localhost:8000`, eliminating CORS during local development.
+- Implemented the core dashboard in `frontend/src/app/page.tsx` with:
+  - Job description textarea input
+  - Drag-and-drop file upload zone for PDF/DOCX resumes
+  - Submit button that orchestrates job creation, resume ingestion, and candidate matching against the Celery-backed backend
+  - Polling mechanism that queries `GET /api/v1/tasks/{task_id}` every 2 seconds while the task is `PENDING`
+  - Visual loading state ("AI Analyzing Candidates...") with task ID display
+  - Results leaderboard ranked by `final_score`, showing TF-IDF/BM25/Skills breakdown, matched/missing skills badges, and candidate PII (name/email)
+- The frontend strictly consumes JSON-safe primitives when submitting to Celery tasks, matching the backend contract established in Phase 9.

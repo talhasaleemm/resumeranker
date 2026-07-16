@@ -1,0 +1,40 @@
+ALICE MARTINEZ
+alice.martinez@email.com | (555) 123-4567 | linkedin.com/in/alicemartinez
+
+SUMMARY
+Frontend Engineer with 5+ years of experience building responsive web applications
+with React, TypeScript, and modern CSS architectures. Passionate about accessibility,
+performance, and design systems.
+
+EXPERIENCE
+Senior Frontend Engineer - TechCorp Inc. (2021 - Present)
+- Architected a React Design System serving 12 product teams, reducing UI bugs by 35%.
+- Migrated legacy jQuery codebase to Next.js + TypeScript, improving Lighthouse scores
+  from 42 to 91.
+- Implemented unit and integration tests with Jest and React Testing Library, raising
+  coverage from 40% to 87%.
+- Led code reviews and mentored 3 junior engineers.
+
+Frontend Developer - DigitalAgency Co. (2019 - 2021)
+- Built client-facing dashboards using React, Redux, and Tailwind CSS.
+- Optimized bundle size by 30% via code splitting and dynamic imports.
+- Collaborated with UX designers to implement pixel-perfect Figma prototypes.
+
+Junior Web Developer - StartupXYZ (2017 - 2019)
+- Developed marketing websites and landing pages with HTML, SCSS, and vanilla JS.
+- Integrated Stripe payments and Mailchimp automation for e-commerce clients.
+
+SKILLS
+JavaScript, TypeScript, React, Next.js, Vue.js, HTML5, CSS3, Tailwind CSS,
+Sass/SCSS, Redux, Zustand, Jest, React Testing Library, Cypress, Webpack,
+Vite, Git, Figma, REST APIs, GraphQL, WebSockets, Chrome DevTools,
+Accessibility (WCAG), Performance Optimization, Responsive Design
+
+EDUCATION
+B.S. Computer Science - University of Technology (2017)
+- GPA: 3.8 / 4.0
+- Senior project: Real-time collaborative editor using WebSockets and CRDTs
+
+CERTIFICATIONS
+- Meta Frontend Developer Professional Certificate (2022)
+- AWS Cloud Practitioner (2023)
