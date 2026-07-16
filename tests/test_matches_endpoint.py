@@ -173,3 +173,20 @@ def test_match_endpoint_accepts_repeated_calls():
         assert res1.status_code == 200
         res2 = client.post("/api/v1/matches/", json=payload)
         assert res2.status_code == 200
+def test_match_endpoint_too_many_candidates():
+    """
+    Verifies that providing over 100 candidate IDs is rejected with 422.
+    If the max_length constraint were removed from MatchRequest.candidate_ids,
+    this would vacantly pass and allow DoS via massive DB queries/scoring bottlenecks.
+    """
+    import uuid
+    from fastapi.testclient import TestClient
+    from app.main import app
+    
+    payload = {
+        "job_id": str(uuid.uuid4()),
+        "candidate_ids": [str(uuid.uuid4()) for _ in range(101)]
+    }
+    with TestClient(app) as client:
+        response = client.post("/api/v1/matches/", json=payload)
+    assert response.status_code == 422

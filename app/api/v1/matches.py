@@ -7,7 +7,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import APIRouter, HTTPException, Depends, Request
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, model_validator, Field
 
 from app.database import get_db
 from app.models.candidate import Candidate
@@ -40,7 +40,7 @@ class MatchWeights(BaseModel):
 
 class MatchRequest(BaseModel):
     job_id: uuid.UUID
-    candidate_ids: List[uuid.UUID]
+    candidate_ids: List[uuid.UUID] = Field(..., min_length=1, max_length=100)
     weights: Optional[MatchWeights] = None
 
 
