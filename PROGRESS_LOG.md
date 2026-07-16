@@ -330,4 +330,12 @@ git grep across all three affected file paths (.github/workflows/ci.yml, github_
 ### Related Notes
 - POSTGRES_PASSWORD (devpassword123) in same ci.yml diff confirmed as throwaway CI-only value for ephemeral containers, not production credential
 - Mirror backup retained at original location for 30-day retention before deletion
-- All working replacement files (eplacements*.txt) deleted from working directory after verification
+- All working replacement files (
+eplacements*.txt) deleted from working directory after verification
+
+---
+
+## Phase 8 -- API Hardening, OCR Fallback & Concurrency Fixes
+- Added strict Pydantic response models for all public endpoints.
+- Implemented a `pytesseract` OCR fallback for scanned PDFs that cannot be parsed by PyMuPDF or pdfplumber.
+- Refactored the concurrent duplicate rejection tests using `threading.Barrier` for deterministic concurrency behavior.

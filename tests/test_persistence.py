@@ -51,31 +51,59 @@ async def test_persistence_raw_text_hash_fallback_match():
     await test_engine.dispose()
 
 async def test_persistence_concurrent_duplicate_rejection():
+    """
+    Test that concurrent insertions of the same candidate are rejected by database constraints.
+    Uses a deterministic approach with threading.Barrier to ensure true concurrency.
+    """
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+    from sqlalchemy.exc import IntegrityError
     from app.config import get_settings
-    test_engine = create_async_engine(get_settings().database_url)
-    
-    # We will try to ingest the exact same candidate twice concurrently.
-    # One should succeed, the other should fail with IntegrityError because
-    # they try to insert identical unique constraints (email or raw_text_hash).
-    
     import uuid
+    import threading
+    import asyncio
+    
+    test_engine = create_async_engine(get_settings().database_url)
     unique_email = f"concurrent_{uuid.uuid4()}@example.com"
     
-    async def try_ingest():
-        async with AsyncSession(test_engine) as db:
-            await ingest_candidate(db, raw_text=f"Developer with {unique_email}", filename="res1.pdf")
-            await db.commit()
-            
-    # We must catch the IntegrityError in the failing task
-    results = await asyncio.gather(try_ingest(), try_ingest(), return_exceptions=True)
+    # Barrier ensures both tasks start database operations simultaneously
+    barrier = threading.Barrier(2)
+    results = []
     
-    # One should be None (success), the other should be an IntegrityError
-    errors = [r for r in results if isinstance(r, IntegrityError)]
-    successes = [r for r in results if r is None]
+    async def try_ingest_with_barrier():
+        """
+        Attempt ingestion with synchronization barrier to force race condition.
+        """
+        try:
+            async with AsyncSession(test_engine) as db:
+                # Wait for both tasks to reach this point before proceeding
+                await asyncio.get_event_loop().run_in_executor(None, barrier.wait)
+                
+                # Both tasks now attempt the insert simultaneously
+                candidate = await ingest_candidate(
+                    db, 
+                    raw_text=f"Developer with {unique_email}", 
+                    filename="res1.pdf"
+                )
+                await db.commit()
+                return ("success", candidate.id)
+        except IntegrityError as e:
+            return ("integrity_error", str(e))
+        except Exception as e:
+            return ("other_error", str(e))
     
-    assert len(successes) == 1
-    assert len(errors) == 1
+    # Run both tasks concurrently
+    task_results = await asyncio.gather(
+        try_ingest_with_barrier(),
+        try_ingest_with_barrier(),
+        return_exceptions=False
+    )
+    
+    # One should succeed, one should fail with IntegrityError
+    successes = [r for r in task_results if r[0] == "success"]
+    integrity_errors = [r for r in task_results if r[0] == "integrity_error"]
+    
+    assert len(successes) == 1, f"Expected 1 success, got {len(successes)}: {task_results}"
+    assert len(integrity_errors) == 1, f"Expected 1 IntegrityError, got {len(integrity_errors)}: {task_results}"
     
     await test_engine.dispose()
 

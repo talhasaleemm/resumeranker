@@ -1,6 +1,7 @@
 """
 app/api/v1/matches.py — Match/ranking endpoint (Phase 2).
 Phase 6B-2b: Rate limiting added.
+Phase 8: Strict response typing added.
 """
 from typing import List, Dict, Any, Optional
 import uuid
@@ -17,6 +18,7 @@ from app.services.matching.scorer import score_candidates
 from app.services.encryption import decrypt_text, decrypt_json
 from app.config import get_settings
 from app.rate_limiter import limiter
+from app.schemas.responses import MatchResponse, MatchCandidate
 
 router = APIRouter(prefix="/matches", tags=["matches"])
 
@@ -44,7 +46,7 @@ class MatchRequest(BaseModel):
     weights: Optional[MatchWeights] = None
 
 
-@router.post("/")
+@router.post("/", response_model=MatchResponse)
 @limiter.limit("60/minute")
 async def match_candidates(request: Request, match_request: MatchRequest, db: AsyncSession = Depends(get_db)):
     """
@@ -118,14 +120,22 @@ async def match_candidates(request: Request, match_request: MatchRequest, db: As
             )
             db.add(mr)
             
-            # Populate PII fields into the response
+            # Populate PII fields into the response (email_hash is deliberately excluded)
             c = cand_map[r["candidate_id"]]
-            r["candidate_name"] = decrypt_text(c.full_name_encrypted)
-            r["candidate_email"] = decrypt_text(c.email_encrypted)
-            matches_out.append(r)
+            match_candidate = MatchCandidate(
+                candidate_id=uuid.UUID(r["candidate_id"]),
+                candidate_name=decrypt_text(c.full_name_encrypted),
+                candidate_email=decrypt_text(c.email_encrypted),
+                tfidf_score=r["tfidf_score"],
+                bm25_score=r["bm25_score"],
+                skill_score=r["skill_score"],
+                final_score=r["final_score"],
+                explanation_log=r["explanation_log"]
+            )
+            matches_out.append(match_candidate)
 
         await db.commit()
-        return {"status": "success", "matches": matches_out}
+        return MatchResponse(status="success", matches=matches_out)
 
     except Exception as e:
         await db.rollback()
