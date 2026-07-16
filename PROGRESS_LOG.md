@@ -283,3 +283,7 @@ tests/test_parser.py::TestNERPipeline::test_json_serializable PASSED
 
 ### [2026-07-16] Retroactive Disclosure Note
 - **Security/Dependency Drift:** It was discovered that during the 'preparatory Phase 6B changes' session (commit fb450ed) and Phase 6B-2b (commit 55902c0), several dependencies were upgraded (fastapi 0.115.0->0.139.0, pytest 8.3.3->9.0.3, plus pdfminer.six/starlette overrides) without being properly flagged in this progress log as deviations per standing rule 4. These version bumps resolved the 19 vulnerabilities identified at the time, leaving 0 vulnerabilities, contrary to previous incomplete reporting of accepted risks.
+
+### [2026-07-16] Phase 6B-2b: Input Validation & Sanitization
+- **Deferred Item:** Proper `response_model` typing (replacing the raw dicts currently returned by all three endpoints) was identified as a related gap but explicitly deferred to a future phase, not silently dropped.
+- **Known Issue:** the concurrent-duplicate-rejection test is known to be occasionally flaky under full-suite runs due to its asyncio.gather race design, confirmed unrelated to this phase's changes, and flagged as a candidate for a more deterministic rewrite in a future phase (not fixed now -- just logged).
