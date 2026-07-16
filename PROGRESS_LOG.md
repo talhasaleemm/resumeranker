@@ -284,6 +284,50 @@ tests/test_parser.py::TestNERPipeline::test_json_serializable PASSED
 ### [2026-07-16] Retroactive Disclosure Note
 - **Security/Dependency Drift:** It was discovered that during the 'preparatory Phase 6B changes' session (commit fb450ed) and Phase 6B-2b (commit 55902c0), several dependencies were upgraded (fastapi 0.115.0->0.139.0, pytest 8.3.3->9.0.3, plus pdfminer.six/starlette overrides) without being properly flagged in this progress log as deviations per standing rule 4. These version bumps resolved the 19 vulnerabilities identified at the time, leaving 0 vulnerabilities, contrary to previous incomplete reporting of accepted risks.
 
-### [2026-07-16] Phase 6B-2b: Input Validation & Sanitization
+### [2026-07-16] Phase 6B-4: Input Validation & Sanitization
 - **Deferred Item:** Proper `response_model` typing (replacing the raw dicts currently returned by all three endpoints) was identified as a related gap but explicitly deferred to a future phase, not silently dropped.
 - **Known Issue:** the concurrent-duplicate-rejection test is known to be occasionally flaky under full-suite runs due to its asyncio.gather race design, confirmed unrelated to this phase's changes, and flagged as a candidate for a more deterministic rewrite in a future phase (not fixed now -- just logged).
+
+---
+## [2026-07-16T19:50:00Z] Security Incident Response: Dead Key Purge from Git History
+
+### Incident Summary
+During routine verification, it was discovered that two dead/rotated encryption keys were present in git history after being inadvertently committed to .github/workflows/ci.yml in commit d98987a (2026-07-14 21:25:00) and exposed on public GitHub for approximately 38 hours before being rotated out in commit 52c06db (2026-07-16 11:35:59).
+
+### Key Status Verification
+- **ENCRYPTION_KEY**: 1sBA...WY8= (first/last 4 chars) - Confirmed dead/rotated, does NOT match current live .env key
+- **BLIND_INDEX_KEY**: 73cd...2ece (first/last 4 chars) - Confirmed dead/rotated, does NOT match current live .env key
+
+### Action Taken
+Full git history purge via git-filter-repo --replace-text with force-push to origin/main:
+1. Created mirror backup at: D:\scratch\resumeranker_mirror_backup_20260716_194756
+2. Identified root cause: UTF-8 BOM in replacements file corrupted first-line pattern matching (same bug that affected PROGRESS_LOG.md encoding earlier)
+3. Recreated replacement file without BOM using [System.Text.UTF8Encoding]::new(False)
+4. Ran git-filter-repo to replace both key fragments with [REDACTED_DEAD_ENCRYPTION_KEY] and [REDACTED_DEAD_BLIND_INDEX_KEY] across all commits
+5. Verified purge locally via git grep across all commit trees - zero matches
+6. Force-pushed cleaned history: 9803107...7213851 main -> main (forced update)
+7. Re-verified against live remote via fresh clone - zero matches confirmed
+
+### Impact
+- **Known forks existed** at time of force-push; fork disruption accepted as intentional tradeoff per explicit user decision
+- Dead keys are no longer present in any commit tree on origin/main
+- No re-encryption of database required (keys were already rotated; current live keys unaffected)
+
+### Evidence
+`
+# Local verification (post-purge, pre-push):
+git grep "1sBAGsThzlOMrZmbKyiE2dzeVfWnN8SWcP6lHLCtWY8=" 7213851abf2d4ec58a6b32b7c0a7d8f871ede613 73031b7c71b3b7f234e25191218ac5ddbe8e971b 9b11ae7db1cb70dd3c714fe3ef1addba8ae983e2 49beed3be674b3c669005afbcce23c2e34fba87f 26b96b07340ae21f1a37211681fa2468f5aaa8e9 78f6c30115d1bbc9db91e1c08b6c46c3cd7b8f58 74b2854c3f024b8fbb2f8c353af36b5ff19ed834 53d57091a142b228cf6e9cecc09e426b853fe957 98d992f1af15fc9eae4852ec720ee8c83ec56c81 91bfff4367b881248b99c7f39848200b81fc60e2 db0c5704afbf3156eb1116128b1072e99cc588ee adc048ab0fc6ee3c32ba4a02d86e9f4121eea592 3a09ed3747e73db9f68d8fa24717a5727ec14174 1469b86eb5197dd9dc20e91fbdf7a26511f9890f 0a025fa999feb0a9d92d34cc1232ed069b437945 0a0d7f5a6da993a602f574e738c3f7a8035ea628 2d0c8ee7be1a701d27e01977fb4575a2be90d78c f3c6c107ca786cab4eb2a7ce3810e3b67737a976 61b85edeb3e89fcf04e61d43c91b884a585ebccf 51874908c20ca12365539300134a48e2f6bc568e a134659a7ffb8bbe977fb9c7c3efd9a416d74d54 3e2a21a88e8bd12df31ae9171d42c5b57895313f eaf40389572266a52f4a71389d73216feba3dfb7 c74aa50a8b8d3b1a787ac1b19c63cb8e6b72799b d3e4724fd8c660c657840572b9f54e4418740cef 55902c0d288b4131df73d203e2a7c0d18a6faa93 698892fd3d197a73aa4ecc040c4b3ecf2542d173 fef3f49ccd7633392c70163b1803b29e5e2fcf15 2ab2bfac2005e9108347e2238efc4fbaab11eb70 341fd1a843cac6f29ba04c15dc0753aab2387e09 fb450ed73b73524a2692796118f253ae265d0a3b 9165cc2c1cd13a1ba5ff3e824722d4653b241560 5aec9f8f5be213bfc61984a5beba48f367ce21f9 0258353ebf0f78836b1e341cbf1f83d94a160365 1e3798a4222cbe1185bd1c54f1ecabeeef11e6b6 781ea8b123382a378194aab47b4526a133fd48a5 c56628e3f880a18cd53685a47703b8eb651faba1 a1fb7169965708d2675670460d37ebf2c19ff56b 7c0274cd152a955096c637b361251e5c30a868ae 94c1679eea417271ac772bbabec9916c81bf8744 58780df2da1fe3fedd2e740d4e5d5e763a7052ed 134bc9b4ac27f9c1c6ef6b482d18e316c54b5335 86920c6f648a17b703441f31c81337de583f6008 d415b99399d0b250db8550012b5e48232a676f25 d077f29b556988f3ee47eb8fa2431439eda77b04 84e889401e63f81605995b8bd131fbad189f75f1 1c94927502429403a48042e1aba32ddc53b6090f 44fc4dc948ebc5bfb544c89cca99aa5aaed35b7a e10444b2dc6e492f67602f07498fca735c0c4a3a 6f51cad18b2ba56250fddc3c4a308b1b619b8b23 562f43b7cf996cf54d6f7b581cd7c7fbc84b456d a40bfccc6739f2c016a4fee0b977cdfb3f79f65c 1fd1edf10f41a686e939a426eccd3983b30bc732 11c75761aea2370b87fe74a32373ea2a6d2d27d9 e38b060e04f9c97c0b452a8a5e5c3c05572ec5d9 0dc2923325c882ee9ae1415d9ec2dd067f05feab d61c1bbb696628387a4b6c3f40d333592eaf74d1 7799a1a9c821418767c9413225d4344ad805079a
+(no output - clean)
+
+git grep "73cd36859344be1d43bcdda9b1be17bc4b70162e1670b7318576be8f0e0f2ece" 7213851abf2d4ec58a6b32b7c0a7d8f871ede613 73031b7c71b3b7f234e25191218ac5ddbe8e971b 9b11ae7db1cb70dd3c714fe3ef1addba8ae983e2 49beed3be674b3c669005afbcce23c2e34fba87f 26b96b07340ae21f1a37211681fa2468f5aaa8e9 78f6c30115d1bbc9db91e1c08b6c46c3cd7b8f58 74b2854c3f024b8fbb2f8c353af36b5ff19ed834 53d57091a142b228cf6e9cecc09e426b853fe957 98d992f1af15fc9eae4852ec720ee8c83ec56c81 91bfff4367b881248b99c7f39848200b81fc60e2 db0c5704afbf3156eb1116128b1072e99cc588ee adc048ab0fc6ee3c32ba4a02d86e9f4121eea592 3a09ed3747e73db9f68d8fa24717a5727ec14174 1469b86eb5197dd9dc20e91fbdf7a26511f9890f 0a025fa999feb0a9d92d34cc1232ed069b437945 0a0d7f5a6da993a602f574e738c3f7a8035ea628 2d0c8ee7be1a701d27e01977fb4575a2be90d78c f3c6c107ca786cab4eb2a7ce3810e3b67737a976 61b85edeb3e89fcf04e61d43c91b884a585ebccf 51874908c20ca12365539300134a48e2f6bc568e a134659a7ffb8bbe977fb9c7c3efd9a416d74d54 3e2a21a88e8bd12df31ae9171d42c5b57895313f eaf40389572266a52f4a71389d73216feba3dfb7 c74aa50a8b8d3b1a787ac1b19c63cb8e6b72799b d3e4724fd8c660c657840572b9f54e4418740cef 55902c0d288b4131df73d203e2a7c0d18a6faa93 698892fd3d197a73aa4ecc040c4b3ecf2542d173 fef3f49ccd7633392c70163b1803b29e5e2fcf15 2ab2bfac2005e9108347e2238efc4fbaab11eb70 341fd1a843cac6f29ba04c15dc0753aab2387e09 fb450ed73b73524a2692796118f253ae265d0a3b 9165cc2c1cd13a1ba5ff3e824722d4653b241560 5aec9f8f5be213bfc61984a5beba48f367ce21f9 0258353ebf0f78836b1e341cbf1f83d94a160365 1e3798a4222cbe1185bd1c54f1ecabeeef11e6b6 781ea8b123382a378194aab47b4526a133fd48a5 c56628e3f880a18cd53685a47703b8eb651faba1 a1fb7169965708d2675670460d37ebf2c19ff56b 7c0274cd152a955096c637b361251e5c30a868ae 94c1679eea417271ac772bbabec9916c81bf8744 58780df2da1fe3fedd2e740d4e5d5e763a7052ed 134bc9b4ac27f9c1c6ef6b482d18e316c54b5335 86920c6f648a17b703441f31c81337de583f6008 d415b99399d0b250db8550012b5e48232a676f25 d077f29b556988f3ee47eb8fa2431439eda77b04 84e889401e63f81605995b8bd131fbad189f75f1 1c94927502429403a48042e1aba32ddc53b6090f 44fc4dc948ebc5bfb544c89cca99aa5aaed35b7a e10444b2dc6e492f67602f07498fca735c0c4a3a 6f51cad18b2ba56250fddc3c4a308b1b619b8b23 562f43b7cf996cf54d6f7b581cd7c7fbc84b456d a40bfccc6739f2c016a4fee0b977cdfb3f79f65c 1fd1edf10f41a686e939a426eccd3983b30bc732 11c75761aea2370b87fe74a32373ea2a6d2d27d9 e38b060e04f9c97c0b452a8a5e5c3c05572ec5d9 0dc2923325c882ee9ae1415d9ec2dd067f05feab d61c1bbb696628387a4b6c3f40d333592eaf74d1 7799a1a9c821418767c9413225d4344ad805079a
+(no output - clean)
+
+# Remote verification (post-push, fresh clone):
+git grep across all three affected file paths (.github/workflows/ci.yml, github_workflows/ci.yml, github_workflows_template/ci.yml)
+(no output - clean)
+`
+
+### Related Notes
+- POSTGRES_PASSWORD (devpassword123) in same ci.yml diff confirmed as throwaway CI-only value for ephemeral containers, not production credential
+- Mirror backup retained at original location for 30-day retention before deletion
+- All working replacement files (eplacements*.txt) deleted from working directory after verification
