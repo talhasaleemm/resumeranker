@@ -96,6 +96,7 @@ async def test_match_results_append_only_in_db():
     async def override_get_db():
         async with TestingSessionLocal() as session:
             yield session
+            await session.commit()
 
     app.dependency_overrides[get_db] = override_get_db
     

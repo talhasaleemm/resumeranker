@@ -19,6 +19,7 @@ TestingSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind
 async def override_get_db():
     async with TestingSessionLocal() as session:
         yield session
+        await session.commit()
 
 app.dependency_overrides[get_db] = override_get_db
 
