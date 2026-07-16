@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     bm25_weight: float = 0.4
     skill_weight: float = 0.2
 
+    # Redis / Celery
+    redis_url: str = "redis://redis:6379/0"
+
     @property
     def max_upload_bytes(self) -> int:
         return self.max_upload_size_mb * 1024 * 1024

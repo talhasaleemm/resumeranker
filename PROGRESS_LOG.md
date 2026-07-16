@@ -339,3 +339,16 @@ eplacements*.txt) deleted from working directory after verification
 - Added strict Pydantic response models for all public endpoints.
 - Implemented a `pytesseract` OCR fallback for scanned PDFs that cannot be parsed by PyMuPDF or pdfplumber.
 - Refactored the concurrent duplicate rejection tests using `threading.Barrier` for deterministic concurrency behavior.
+
+---
+
+## Phase 9 -- Asynchronous Task Queue (Celery/Redis)
+- Replaced synchronous blocking inference inside FastAPI route handlers with a decoupled Celery + Redis task queue.
+- `POST /api/v1/resumes/` now returns HTTP 202 with a `task_id` and delegates resume parsing/ingestion to the `ingest_candidate` Celery task.
+- `POST /api/v1/matches/` now returns HTTP 202 with a `task_id` and delegates TF-IDF/BM25 scoring to the `score_candidates` Celery task.
+- Added `GET /api/v1/tasks/{task_id}` to poll task state (PENDING, SUCCESS, FAILURE) and retrieve results from the Redis backend.
+- `docker-compose.yml` now spins up `redis:7-alpine` and a `celery_worker` service built from the same Dockerfile.
+- `requirements.txt` updated with `celery[redis]==5.4.0` and `redis==5.2.1`.
+- `app/config.py` gains `REDIS_URL` for Celery broker/backend configuration.
+- `app/worker.py` initializes the Celery app, creates an isolated sync SQLAlchemy session for the worker, and exposes `ingest_candidate_task` and `score_candidates_task`.
+- PII encryption and blind-index dedup logic remain intact inside the worker database transactions.

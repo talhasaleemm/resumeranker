@@ -2,6 +2,7 @@
 app/api/v1/matches.py — Match/ranking endpoint (Phase 2).
 Phase 6B-2b: Rate limiting added.
 Phase 8: Strict response typing added.
+Phase 9: Async task queue via Celery.
 """
 from typing import List, Dict, Any, Optional
 import uuid
@@ -13,12 +14,13 @@ from pydantic import BaseModel, model_validator, Field
 from app.database import get_db
 from app.models.candidate import Candidate
 from app.models.job import Job
-from app.models.match import MatchResult
 from app.services.matching.scorer import score_candidates
 from app.services.encryption import decrypt_text, decrypt_json
 from app.config import get_settings
 from app.rate_limiter import limiter
 from app.schemas.responses import MatchResponse, MatchCandidate
+from app.worker import score_candidates_task
+from fastapi.responses import JSONResponse
 
 router = APIRouter(prefix="/matches", tags=["matches"])
 
@@ -50,98 +52,30 @@ class MatchRequest(BaseModel):
 @limiter.limit("60/minute")
 async def match_candidates(request: Request, match_request: MatchRequest, db: AsyncSession = Depends(get_db)):
     """
-    Computes match scores between a job and candidates, loading from DB and persisting results.
+    Submit candidates for asynchronous matching against a job.
+    Returns 202 Accepted with a task_id for polling.
     """
-    settings = get_settings()
-
-    # Load job
     job = await db.get(Job, match_request.job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # Load candidates
     stmt = select(Candidate).where(Candidate.id.in_(match_request.candidate_ids))
     res = await db.execute(stmt)
     candidates_db = res.scalars().all()
     if not candidates_db:
         raise HTTPException(status_code=404, detail="No candidates found")
 
-    candidates_payload = []
-    # Build dictionary to map cand_id to candidate object for later decoration
-    cand_map = {}
-    for c in candidates_db:
-        cand_map[str(c.id)] = c
-        candidates_payload.append({
-            "id": str(c.id),
-            "raw_text": decrypt_text(c.raw_text_encrypted) or "",
-            "skills": c.parsed_skills or [],
-            "experience": decrypt_json(c.parsed_experience_encrypted) or [],
-            "projects": decrypt_json(c.parsed_projects_encrypted) or []
-        })
+    candidate_ids_str = [str(cid) for cid in match_request.candidate_ids]
+    task = score_candidates_task.delay(
+        job_id=str(match_request.job_id),
+        candidate_ids=candidate_ids_str,
+    )
 
-    original_tfidf = settings.tfidf_weight
-    original_bm25 = settings.bm25_weight
-    original_skills = settings.skill_weight
-
-    weights_used = {
-        "tfidf": original_tfidf,
-        "bm25": original_bm25,
-        "skills": original_skills
-    }
-
-    try:
-        if match_request.weights:
-            settings.tfidf_weight = match_request.weights.tfidf
-            settings.bm25_weight = match_request.weights.bm25
-            settings.skill_weight = match_request.weights.skills
-            weights_used = {
-                "tfidf": match_request.weights.tfidf,
-                "bm25": match_request.weights.bm25,
-                "skills": match_request.weights.skills
-            }
-
-        results = score_candidates(
-            job_description=job.description,
-            job_required_skills=job.required_skills or [],
-            candidates=candidates_payload
-        )
-
-        matches_out = []
-        for r in results:
-            mr = MatchResult(
-                candidate_id=uuid.UUID(r["candidate_id"]),
-                job_id=job.id,
-                tfidf_score=r["tfidf_score"],
-                bm25_score=r["bm25_score"],
-                skill_overlap_score=r["skill_score"],
-                final_score=r["final_score"],
-                weights_used=weights_used,
-                explanation_log=r["explanation_log"]
-            )
-            db.add(mr)
-            
-            # Populate PII fields into the response (email_hash is deliberately excluded)
-            c = cand_map[r["candidate_id"]]
-            match_candidate = MatchCandidate(
-                candidate_id=uuid.UUID(r["candidate_id"]),
-                candidate_name=decrypt_text(c.full_name_encrypted),
-                candidate_email=decrypt_text(c.email_encrypted),
-                tfidf_score=r["tfidf_score"],
-                bm25_score=r["bm25_score"],
-                skill_score=r["skill_score"],
-                final_score=r["final_score"],
-                explanation_log=r["explanation_log"]
-            )
-            matches_out.append(match_candidate)
-
-        await db.commit()
-        return MatchResponse(status="success", matches=matches_out)
-
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        # Restore original settings
-        settings.tfidf_weight = original_tfidf
-        settings.bm25_weight = original_bm25
-        settings.skill_weight = original_skills
+    return JSONResponse(
+        status_code=202,
+        content={
+            "status": "accepted",
+            "task_id": task.id,
+            "message": "Matching is being processed. Use GET /api/v1/tasks/{task_id} to check status.",
+        },
+    )

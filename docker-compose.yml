@@ -1,6 +1,6 @@
 # =========================================================
 # docker-compose.yml — ResumeRanker
-# Spins up: FastAPI app + PostgreSQL
+# Spins up: FastAPI app + PostgreSQL + Redis + Celery Worker
 # =========================================================
 services:
   db:
@@ -23,6 +23,20 @@ services:
     networks:
       - resumeranker_net
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - resumeranker_net
+
   app:
     build:
       context: .
@@ -34,6 +48,8 @@ services:
       - "${APP_PORT:-8001}:8000"
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     volumes:
       - ./app:/app/app
@@ -49,11 +65,37 @@ services:
         uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
       "
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]  # internal port stays 8000
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
       start_period: 60s
+    networks:
+      - resumeranker_net
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app
+      - ./alembic.ini:/app/alembic.ini
+      - ./tests:/app/tests
+      - ./scripts:/app/scripts
+      - ./data:/app/data
+    command: >
+      sh -c "
+        echo '--- Starting Celery worker ---' &&
+        celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
+      "
     networks:
       - resumeranker_net
 

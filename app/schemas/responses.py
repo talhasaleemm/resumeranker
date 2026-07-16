@@ -38,3 +38,10 @@ class MatchResponse(BaseModel):
     """Response for POST /api/v1/matches/"""
     status: str
     matches: list[MatchCandidate]
+
+
+class TaskResponse(BaseModel):
+    """Response for task status endpoint."""
+    task_id: str
+    status: str
+    result: Any | None = None
