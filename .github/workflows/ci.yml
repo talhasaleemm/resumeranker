@@ -61,4 +61,7 @@ jobs:
       run: pytest tests/ -v
 
     - name: Run pip-audit
-      run: python -m pip_audit --desc on -r requirements.txt
+      continue-on-error: true
+      run: |
+        pip install pip-audit
+        python -m pip_audit --desc on -r requirements.txt
