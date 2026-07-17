@@ -1,0 +1,54 @@
+{
+  "fixtures": {
+    "job_descriptions": {
+      "jd_verbose.txt": {
+        "role": "verbose_jd",
+        "description": "40+ token JD covering Senior Full-Stack Engineer requirements. Designed to produce raw BM25 scores that exceed the old BM25_SATURATION_CAP=12.0, proving the cap was broken.",
+        "token_count_approx": 42
+      },
+      "jd_terse.txt": {
+        "role": "terse_jd",
+        "description": "5-8 token JD. Proves the new normalization does not artificially deflate short JDs relative to their match density.",
+        "token_count_approx": 4
+      },
+      "jd_medium.txt": {
+        "role": "medium_jd",
+        "description": "15-20 token JD. Used as the reference JD for the perfect-match saturation test and SCALE_FACTOR calibration.",
+        "token_count_approx": 10
+      }
+    },
+    "candidates": {
+      "candidate_dense.txt": {
+        "role": "dense_candidate",
+        "description": "Strong keyword overlap against all three JDs. Used in the JD-length independence test: should score within a 0.15 band across verbose/terse/medium JDs.",
+        "expected_match_tier": "strong"
+      },
+      "candidate_sparse.txt": {
+        "role": "sparse_candidate",
+        "description": "Minimal content and overlap. Represents a weak/no-match candidate.",
+        "expected_match_tier": "weak"
+      },
+      "candidate_stuffer.txt": {
+        "role": "stuffer_candidate",
+        "description": "Repeats keywords from jd_verbose multiple times but actual experience is unrelated backend work. Tests that query-length normalization does not reward raw repetition.",
+        "expected_match_tier": "moderate_inflated"
+      },
+      "candidate_perfect.txt": {
+        "role": "perfect_candidate",
+        "description": "100% keyword overlap with jd_medium. Used to calibrate SCALE_FACTOR: perfect match must yield normalized score in 0.80-0.85 range (not saturating at 1.0).",
+        "expected_match_tier": "perfect_against_medium"
+      }
+    },
+    "pairings": [
+      {"jd": "jd_verbose.txt", "candidate": "candidate_dense.txt", "purpose": "verbose_jd_strong_match"},
+      {"jd": "jd_terse.txt",   "candidate": "candidate_dense.txt", "purpose": "terse_jd_strong_match"},
+      {"jd": "jd_medium.txt",  "candidate": "candidate_dense.txt", "purpose": "medium_jd_strong_match"},
+      {"jd": "jd_verbose.txt", "candidate": "candidate_sparse.txt", "purpose": "verbose_jd_weak_match"},
+      {"jd": "jd_verbose.txt", "candidate": "candidate_stuffer.txt", "purpose": "keyword_stuffer_test"},
+      {"jd": "jd_medium.txt",  "candidate": "candidate_perfect.txt", "purpose": "perfect_match_saturation_calibration"}
+    ]
+  },
+  "phase": 13,
+  "data_source": "synthetic",
+  "note": "All fixtures are synthetic with no real PII. Designed to stress-test BM25 query-length normalization across JD length extremes and keyword-stuffing patterns."
+}

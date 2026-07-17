@@ -1,0 +1,1 @@
+Full-stack developer proficient in React TypeScript Node.js PostgreSQL Docker REST APIs agile development. Built production React TypeScript frontends. Developed Node.js REST APIs backed by PostgreSQL. Deployed services with Docker. Practiced agile development methodologies throughout career.

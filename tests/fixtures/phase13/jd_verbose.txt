@@ -1,0 +1,1 @@
+Senior Full-Stack Engineer with expertise in React TypeScript Node.js Python FastAPI PostgreSQL Redis Docker Kubernetes AWS microservices REST APIs GraphQL CI/CD pipelines test-driven development agile scrum system design distributed systems caching authentication authorization monitoring observability
