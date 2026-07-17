@@ -210,46 +210,89 @@ normalized_score = min(raw_score / BM25_SATURATION_CAP, 1.0)
 
 `BM25_SATURATION_CAP` is a fixed constant representing "a very good BM25 match." Any raw score at or above the cap maps to 1.0; scores below it map proportionally. This is simpler and more predictable than sigmoid (which requires tuning a midpoint and slope) and more informative than z-score (which requires corpus statistics).
 
-**How to set the cap:** BM25 raw scores depend on document length and vocabulary. In practice, `rank_bm25` with Okapi BM25 (k1=1.5, b=0.75 defaults) produces raw scores in roughly the 0–20 range for job description vs resume matching. A cap of **12.0** is proposed as a starting point (equivalent to saying: a raw score of 12 or above is a "saturated match"). This must be validated empirically during implementation by:
+**Empirical justification for BM25_SATURATION_CAP = 12.0**
 
-1. Running `compute_bm25_scores` (not the normalized version) against a representative sample of 5–10 job/candidate pairs from the existing test fixtures.
-2. Inspecting the raw score distribution.
-3. Setting `BM25_SATURATION_CAP` to approximately the 90th percentile of raw scores for genuinely matching pairs — so a strong match approaches 1.0 and a weak match stays proportionally low.
+Raw BM25 scores were measured across the full test corpus before writing this plan — short fixture texts (7 job/candidate pairs × 4 job descriptions) and all 7 real sample resume PDFs/DOCXs against 3 representative job descriptions. Results:
 
-`BM25_SATURATION_CAP` must be stored as a named constant in `bm25_engine.py` (not a magic number inline) and documented with the calibration rationale.
+| Dataset | Min non-zero | Median | 90th pct | Max |
+|---------|-------------|--------|----------|-----|
+| Short fixture texts | 0.19 | 1.39 | 4.68 | 7.03 |
+| Real sample resumes | 0.42 | 0.96 | 2.83 | 9.65 |
+| **Combined** | **0.19** | **~1.1** | **~4.7** | **9.65** |
+
+Notable individual scores:
+- `resume_fullstack_dev.pdf` vs frontend JD: **9.65** — the single highest observed score in the corpus; a strongly matching full-length resume against a closely targeted job description.
+- `backend_keyword_stuffer` vs frontend JD: **0.98** — the stuffer's raw score; weak but non-zero overlap.
+- `genuine_frontend` vs frontend JD: **7.03** — the genuine candidate's raw score.
+- `resume_backend_engineer.pdf` vs backend JD: **2.63** — a good real-resume match.
+
+**Cap derivation:** The observed maximum is 9.65. A cap of **12.0** places that maximum at 9.65/12.0 = **0.80** — a strong but non-saturated score. This has two important properties:
+1. Nothing in the current corpus artificially saturates at 1.0, so the cap does not overfit to existing fixtures.
+2. It leaves headroom (1.0 requires a raw score ≥ 12.0) for cases not yet in the corpus — longer job descriptions, denser technical resumes — without requiring the cap to be re-tuned.
+
+A cap of 9.65 (tight to current max) would be overfit. A cap of 20.0 (arbitrary upper bound) would compress all current scores into the 0–0.48 range, weakening BM25's discriminating power. 12.0 sits at approximately the 97th–99th percentile of expected real-world scores, making it a principled upper-bound rather than a fixture-tuned magic number.
+
+Under cap-based normalization, the keyword-stuffer scenario scores become:
+- Stuffer BM25 raw ≈ 0.98 → normalized ≈ **0.082** (vs 1.0 under min-max)
+- Genuine frontend BM25 raw ≈ 7.03 → normalized ≈ **0.586** (vs 0.0 under min-max)
+
+This is a dramatically more truthful representation of actual keyword overlap.
 
 ### Implementation scope
 
-**Files to modify:**
+**Full blast radius — every test assertion affected by the normalization change**
+
+Switching from relative (min-max) to absolute (cap-based) normalization changes the numeric BM25 output for every test that computes a score in a batch where candidates have different raw BM25 scores. Identified by grepping all `tests/test_*.py` files before writing this plan:
+
+**`tests/test_matching.py` — 4 assertions at risk:**
+- `test_bm25_engine`: `assert scores[0] > scores[1]` and `assert scores[2] > scores[1]` — relative ordering assertions. Should still hold (same candidates, same relative overlap), but must be verified after the fix.
+- `test_bm25_engine`: `assert min(scores) >= 0.0` and `assert max(scores) <= 1.0` — bounds assertions. Still hold under cap-based normalization. No change needed.
+- `test_bm25_stopword_filtering_independent`: `assert scores[1] > scores[0]` — relative ordering. Should still hold; must be verified.
+- `test_score_candidates`: `assert top_cand["final_score"] > bot_cand["final_score"]` — ranking direction. Should hold if fix is correct; must be verified.
+
+**`tests/test_e2e_flow.py` — 2 assertions at risk:**
+- `assert aisha_match["bm25_score"] > 0.0` — still holds as long as any keyword overlap exists. Passes automatically.
+- `assert aisha_match["final_score"] == pytest.approx(expected_final, abs=0.01)` — computes `expected_final` from the actual returned component scores, so self-consistent regardless of BM25 value. Passes automatically.
+
+**`tests/test_phase12_weight_validation.py` — 3 assertions at risk:**
+- `test_keyword_stuffer_rejection_at_20_percent_vector_weight`: `assert candidate_d_result["final_score"] > candidate_c_result["final_score"]` — mock-embedding test. Under cap-based normalization the stuffer's BM25 drops from 1.0 to ~0.08 and the genuine candidate's rises from 0.0 to ~0.59, so D should win by a larger margin. The `score_gap >= 3.0` threshold will need to be updated to match the new (larger) measured gap.
+- `test_keyword_stuffer_rejection_at_20_percent_vector_weight`: `if bm25_c == 1.0 and bm25_d == 0.0` conditional — documents the artifact; will never trigger after the fix. Dead code; clean up.
+- `test_keyword_stuffer_rejection_real_embeddings`: direction assertion currently weakened to `assert sim_d > sim_c`. Must be restored to full composite ranking assertion after the fix is confirmed to work.
+
+**All other test files** (`test_auth.py`, `test_authorization.py`, `test_api_jobs.py`, `test_api_resumes.py`, `test_persistence.py`, `test_parser.py`, `test_ocr.py`, `test_tagger.py`, `test_rate_limiting.py`) — none contain BM25 score value assertions. No changes required.
+
+**Files to modify (implementation):**
 
 1. **`app/services/matching/bm25_engine.py`**
-   - Add `BM25_SATURATION_CAP: float = 12.0` constant (value to be confirmed empirically during calibration step above).
-   - Replace the min-max normalization in `compute_normalized_bm25_scores` with cap-based normalization: `min(score / BM25_SATURATION_CAP, 1.0)`.
-   - The zero fallback (`max_score == min_score` branch) is no longer needed and should be removed.
-   - Add a docstring explaining the cap value, how it was calibrated, and why min-max was replaced.
+   - Add `BM25_SATURATION_CAP: float = 12.0` constant at module level with a comment citing the empirical calibration above.
+   - Replace the entire min-max normalization block in `compute_normalized_bm25_scores` with: `return [min(s / BM25_SATURATION_CAP, 1.0) for s in raw_scores]`.
+   - Remove the `max_score == min_score` fallback branch — no longer needed.
+   - Update the docstring to explain why min-max was replaced and how the cap was calibrated.
 
 2. **`tests/test_matching.py`**
-   - Update any existing BM25 normalization tests that assert specific normalized values under the old min-max scheme.
-   - Add a new test `test_bm25_normalization_batch_size_independent`: scores 2-candidate and 10-candidate batches using the same candidate texts and asserts that a given candidate's normalized score does not change based on who else is in the batch (within a small tolerance).
+   - Verify all 4 at-risk assertions pass; update any that fail (expected to be ordering assertions only).
+   - Add `test_bm25_normalization_batch_size_independent`: score the same candidate text in a 2-candidate batch and a 5-candidate batch with different companions, and assert the normalized score is identical in both (within float tolerance `1e-9`). This is the regression test that would have caught the original bug.
 
 3. **`tests/test_phase12_weight_validation.py`**
-   - Re-run `test_keyword_stuffer_rejection_real_embeddings` with real embeddings and update the assertion from "direction only" to "D beats C" once the fix is confirmed to produce correct ranking.
-   - Update the printed gap figures.
+   - Remove the dead `if bm25_c == 1.0 and bm25_d == 0.0` conditional block.
+   - Update the `score_gap >= 3.0` threshold to match the actual measured gap after the fix.
+   - Restore the full composite ranking assertion in `test_keyword_stuffer_rejection_real_embeddings`.
+   - Report and document the actual post-fix scores and gap.
 
 **Files NOT to modify:**
 - `app/config.py` (weights unchanged — re-evaluate the 30/30/20/20 split after seeing real-embedding results post-fix)
-- Any other scoring, API, or migration files
+- Any other scoring, API, migration, or auth files
 
 ### Verification criteria (must all be true before closing Phase 12)
 
 1. `test_bm25_normalization_batch_size_independent` passes — same candidate gets same normalized score regardless of batch composition.
-2. `test_keyword_stuffer_rejection_real_embeddings` passes with direction assertion restored: genuine frontend (D) beats backend stuffer (C) with real `all-MiniLM-L6-v2` embeddings at 30/30/20/20 weights.
+2. `test_keyword_stuffer_rejection_real_embeddings` passes with full composite ranking assertion restored: genuine frontend (D) beats backend stuffer (C) with real `all-MiniLM-L6-v2` embeddings at 30/30/20/20 weights.
 3. All 86 existing tests continue to pass.
-4. The actual gap (D score − C score) with real embeddings is reported with full component breakdown.
+4. The actual gap (D score − C score) with real embeddings is reported with full component breakdown (TF-IDF, BM25, skills, vector, final).
 5. If the gap is positive but very small (< 2 points), flag that the weights may still need revisiting even with the normalization fix.
 
 ### What this does NOT fix
 
 - The 30/30/20/20 weight split is still provisional. The fix removes the normalization artifact so the weights can be evaluated fairly, but does not guarantee the current split is optimal.
-- The BM25 component will likely produce lower normalized scores overall compared to min-max (since min-max always fills the 0–1 range). This may shift the overall final score distribution downward slightly. This is expected and correct — it reflects actual signal, not relative rank.
+- Overall final scores will be lower than under min-max (since min-max always fills the 0–1 range). This is expected and correct — it reflects actual signal strength, not relative rank within a batch.
 - PII content-scanning gap, migration gap lesson — unchanged, carried forward.
