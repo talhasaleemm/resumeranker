@@ -82,7 +82,8 @@ def score_candidates(
     tfidf_scores = compute_tfidf_scores(job_description, candidate_texts)
     
     # 2. Compute BM25 (Normalized)
-    bm25_scores = compute_normalized_bm25_scores(job_description, candidate_texts)
+    n_query_tokens = len(job_description.split())
+    bm25_scores = compute_normalized_bm25_scores(job_description, candidate_texts, n_query_tokens)
     
     results = []
     

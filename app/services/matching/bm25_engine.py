@@ -36,8 +36,9 @@ ALL_STOP_WORDS = STOP_WORDS.union(CUSTOM_STOP_WORDS)
 # documents without requiring the cap to be retuned. A tight cap (e.g. 9.65) would
 # overfit to current fixtures; a loose cap (e.g. 20.0) would compress all scores into
 # the 0–0.48 range and weaken BM25 discrimination.
-BM25_SATURATION_CAP: float = 12.0
-
+BM25_K1: float = 1.5
+BM25_B: float = 0.75
+SCALE_FACTOR: float = 1.0
 
 def _tokenize(text: str) -> List[str]:
     """Tokenization: lowercase, remove punctuation, remove stopwords, split by whitespace."""
@@ -67,36 +68,34 @@ def compute_bm25_scores(query: str, documents: List[str]) -> List[float]:
     if not tokenized_corpus or not any(tokenized_corpus):
         return [0.0] * len(documents)
 
-    bm25 = BM25Okapi(tokenized_corpus)
+    bm25 = BM25Okapi(tokenized_corpus, k1=BM25_K1, b=BM25_B)
     scores = bm25.get_scores(tokenized_query)
 
     return scores.tolist()
 
 
-def compute_normalized_bm25_scores(query: str, documents: List[str]) -> List[float]:
+def compute_normalized_bm25_scores(query: str, documents: List[str], n_query_tokens: int) -> List[float]:
     """
-    Computes BM25 scores and normalizes them to [0.0, 1.0] using a fixed saturation cap
-    so they can be combined linearly with TF-IDF, Skill overlap, and Vector similarity.
+    Computes BM25 scores and normalizes them to [0.0, 1.0] using Length-Aware Normalization.
 
-    Normalization: normalized = max(0.0, min(raw_score / BM25_SATURATION_CAP, 1.0))
-
-    This is batch-size-independent: a candidate's normalized score does not change based
-    on who else is in the batch. See BM25_SATURATION_CAP for calibration details.
-
-    Note on small corpora: BM25 Okapi IDF = log((N - n + 0.5) / (n + 0.5)), where N is
-    the number of documents in the batch and n is the number containing a given term.
-    When N <= 2 and only 1 document matches a query term (n=1), IDF is negative, making
-    the raw score zero or negative after the max(0.0, ...) floor. This means BM25=0.0
-    is EXPECTED AND CORRECT for candidates in 1-2 candidate batches, even if they have
-    genuine keyword overlap. It is not a bug or regression — it is standard BM25 behavior
-    that was previously hidden by min-max inflation (which gave 1.0 to any non-zero raw
-    score in a 2-candidate batch). In production-scale batches (10-50+ candidates) IDF
-    is positive and BM25 contributes meaningfully. For single-candidate scoring, the
-    composite score is driven by TF-IDF, skills, and vector similarity instead.
+    Normalization: normalized = max(0.0, min(raw_score / (sum_idf * SCALE_FACTOR), 1.0))
     """
-    raw_scores = compute_bm25_scores(query, documents)
+    if not query.strip() or not documents:
+        return [0.0] * len(documents)
 
-    if not raw_scores:
-        return []
+    tokenized_corpus = [_tokenize(doc) for doc in documents]
+    tokenized_query = _tokenize(query)
 
-    return [max(0.0, min(s / BM25_SATURATION_CAP, 1.0)) for s in raw_scores]
+    if not tokenized_corpus or not any(tokenized_corpus):
+        return [0.0] * len(documents)
+
+    bm25 = BM25Okapi(tokenized_corpus, k1=BM25_K1, b=BM25_B)
+    raw_scores = bm25.get_scores(tokenized_query).tolist()
+    
+    sum_idf = sum(bm25.idf.get(t, 0.0) for t in tokenized_query)
+
+    if sum_idf <= 0.0:
+        return [0.0] * len(documents)
+        
+    denom = sum_idf * SCALE_FACTOR
+    return [max(0.0, min(s / denom, 1.0)) for s in raw_scores]

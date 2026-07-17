@@ -42,7 +42,7 @@ class TestEngines:
             "I am a backend engineer.",
             "React React React frontend developer"
         ]
-        scores = compute_normalized_bm25_scores(query, docs)
+        scores = compute_normalized_bm25_scores(query, docs, n_query_tokens=len(query.split()))
         assert len(scores) == 3
         assert min(scores) >= 0.0
         assert max(scores) <= 1.0
@@ -56,7 +56,7 @@ class TestEngines:
             "senior backend developer with 10 years experience",
             "junior devops engineer with 2 years experience"
         ]
-        scores = compute_normalized_bm25_scores(query, docs)
+        scores = compute_normalized_bm25_scores(query, docs, n_query_tokens=len(query.split()))
         # Because we strip "senior", "developer", "with", "years", "experience", "engineer", "junior",
         # the query becomes "frontend 5".
         # Doc 1 becomes "backend 10".
@@ -78,7 +78,7 @@ class TestEngines:
             "yet another unrelated document"
         ]
         from app.services.matching.bm25_engine import compute_normalized_bm25_scores
-        scores = compute_normalized_bm25_scores(query, docs)
+        scores = compute_normalized_bm25_scores(query, docs, n_query_tokens=len(query.split()))
         # Standard stopwords (looking, for, a) are stripped.
         # Query becomes ["backend", "python", "programmer"].
         # Doc 1 matches only "programmer".
@@ -88,36 +88,23 @@ class TestEngines:
 
     def test_bm25_normalization_batch_size_independent(self):
         """
-        Regression test for the min-max normalization artifact (Phase 12B fix).
-
-        Under the old min-max scheme, a candidate's normalized BM25 score depended on
-        who else was in the batch: the weakest always got 0.0 and the strongest always
-        got 1.0, regardless of absolute signal strength. In a 2-candidate batch, any
-        candidate with non-zero overlap got 1.0 by default — even a weak keyword-stuffer.
-
-        Under cap-based normalization (normalized = max(0, min(raw/CAP, 1.0))),
-        the normalized score is a deterministic function of the raw score alone.
-
-        Note: BM25 raw scores are corpus-dependent (IDF shifts with batch composition),
-        so the same text can produce different raw scores in different batches. This test
-        does not assert raw-score stability (that is a property of BM25 itself, not the
-        normalization scheme). It asserts that:
-        1. normalized = max(0, min(raw/CAP, 1.0)) for every score in the batch.
-        2. A candidate with strong overlap does NOT receive 1.0 when paired only with a
-           zero-overlap candidate (the specific inflation the old min-max scheme caused).
-        3. A zero-overlap candidate receives 0.0.
-        4. A strong-match candidate scores proportionally above zero.
+        Regression test for batch-size independence with Length-Aware Normalization.
+    
+        Under cap-based normalization (normalized = max(0, min(raw/(sum_idf * SCALE_FACTOR), 1.0))),
+        the normalized score is a deterministic function of the raw score and query tokens alone.
+    
+        It asserts that:
+        1. normalized = max(0, min(raw / (sum_idf * SCALE_FACTOR), 1.0)) for every score in the batch.
+        2. A strong match candidate scores proportionally above zero.
         """
         from app.services.matching.bm25_engine import (
             compute_bm25_scores,
             compute_normalized_bm25_scores,
-            BM25_SATURATION_CAP,
+            SCALE_FACTOR,
+            BM25Okapi,
+            _tokenize
         )
-
-        # Use a query/corpus with clear positive vs zero overlap.
-        # BM25 IDF is positive only when the matching doc is in a minority:
-        # with N docs and n=1 matching, IDF = log((N-n+0.5)/(n+0.5)) > 0 iff N >= 3.
-        # We use 3 docs (1 strong match + 2 zero-overlap) to ensure positive raw scores.
+        
         query = "Senior Python backend developer with FastAPI PostgreSQL Docker experience."
         strong_match = (
             "Python backend developer. Built FastAPI services with PostgreSQL and SQLAlchemy. "
@@ -132,40 +119,86 @@ class TestEngines:
             "clinical documentation electronic health records."
         )
 
-        raw_scores = compute_bm25_scores(query, [strong_match, zero_match_1, zero_match_2])
-        # Confirm the corpus gives the expected structure
-        assert raw_scores[0] > 0.0, f"strong_match raw BM25 should be positive; got {raw_scores[0]}"
-        assert raw_scores[1] == 0.0, f"zero_match_1 raw BM25 should be zero; got {raw_scores[1]}"
-        assert raw_scores[2] == 0.0, f"zero_match_2 raw BM25 should be zero; got {raw_scores[2]}"
+        docs = [strong_match, zero_match_1, zero_match_2]
+        
+        raw_scores = compute_bm25_scores(query, docs)
+        
+        # Manually compute sum_idf for testing
+        tokenized_corpus = [_tokenize(doc) for doc in docs]
+        tokenized_query = _tokenize(query)
+        bm25 = BM25Okapi(tokenized_corpus)
+        sum_idf = sum(bm25.idf.get(t, 0.0) for t in tokenized_query)
+        
+        normalized_scores = compute_normalized_bm25_scores(query, docs, len(query.split()))
 
-        normalized_scores = compute_normalized_bm25_scores(query, [strong_match, zero_match_1, zero_match_2])
-
-        # Property 1: normalized score equals max(0, min(raw/CAP, 1.0)) for each doc
+        # Property 1: normalized score equals max(0, min(raw/(sum_idf * SCALE_FACTOR), 1.0))
         for i, (raw, norm) in enumerate(zip(raw_scores, normalized_scores)):
-            expected = max(0.0, min(raw / BM25_SATURATION_CAP, 1.0))
+            expected = max(0.0, min(raw / (sum_idf * SCALE_FACTOR), 1.0)) if sum_idf > 0 else 0.0
             assert abs(norm - expected) < 1e-9, (
-                f"Doc {i}: normalized {norm:.8f} != cap formula {expected:.8f} (raw={raw:.6f})"
+                f"Doc {i}: normalized {norm:.8f} != expected {expected:.8f} (raw={raw:.6f})"
             )
 
         strong_norm = normalized_scores[0]
         zero_norm   = normalized_scores[1]
 
-        # Property 2: strong_match must NOT be inflated to 1.0 just because zero_match is 0.0.
-        # Under old min-max this 2-candidate batch would have produced 1.0 vs 0.0.
-        assert strong_norm < 1.0, (
-            f"Strong match should not be inflated to 1.0 in a 2-candidate batch. "
-            f"Got {strong_norm:.4f}. Under old min-max this would have been 1.0."
-        )
+        # Property 2: strong match must NOT be inflated to 1.0
+        assert strong_norm < 1.0, f"Strong match should not be inflated to 1.0. Got {strong_norm:.4f}."
 
         # Property 3: zero-overlap candidate stays at 0.0
-        assert zero_norm == 0.0, (
-            f"Zero-overlap candidate should get 0.0. Got {zero_norm:.4f}."
-        )
+        assert zero_norm == 0.0, f"Zero-overlap candidate should get 0.0. Got {zero_norm:.4f}."
 
         # Property 4: strong match is meaningfully above zero
-        assert strong_norm > 0.0, (
-            f"Strong match should have a positive normalized score. Got {strong_norm:.4f}."
+        assert strong_norm > 0.0, f"Strong match should have a positive normalized score. Got {strong_norm:.4f}."
+
+    def test_bm25_jd_length_independence(self):
+        """
+        Assert that the same candidate scored against short/medium/verbose JDs
+        produces normalized scores within a tight band (< 0.10) when MATCH DENSITY is identical.
+        """
+        from app.services.matching.bm25_engine import compute_normalized_bm25_scores
+        
+        # Identical match density test (100% overlap for both)
+        candidate = "python fastapi postgresql redis docker kubernetes react typescript graphql celery nginx elasticsearch"
+        verbose_jd = "python fastapi postgresql redis docker kubernetes react typescript graphql celery nginx elasticsearch"
+        terse_jd = "python fastapi postgresql redis"
+        zero_match = "accounting payroll bookkeeping invoicing ledger reconciliation"
+        
+        docs = [candidate, zero_match]
+        
+        norm_verbose = compute_normalized_bm25_scores(verbose_jd, docs, len(verbose_jd.split()))[0]
+        norm_terse = compute_normalized_bm25_scores(terse_jd, docs, len(terse_jd.split()))[0]
+        
+        assert abs(norm_verbose - norm_terse) < 0.10, (
+            f"Expected tight band < 0.10, got {norm_verbose} vs {norm_terse}"
         )
+
+    def test_bm25_tier_discrimination(self):
+        """
+        Assert strong > moderate > weak with a >= 0.10 gap between tiers.
+        """
+        from app.services.matching.bm25_engine import compute_normalized_bm25_scores
+        
+        query = "Senior Python developer with FastAPI and Docker experience."
+        strong = "Python backend developer. Built FastAPI APIs and deployed with Docker."
+        moderate = "Python developer. Some web framework experience."
+        weak = "Junior developer with basic scripting."
+        
+        docs = [strong, moderate, weak]
+        scores = compute_normalized_bm25_scores(query, docs, len(query.split()))
+        
+        assert scores[0] > scores[1], "Strong should beat moderate"
+        assert scores[1] > scores[2], "Moderate should beat weak"
+        assert (scores[0] - scores[1]) >= 0.10, f"Gap between strong and moderate {scores[0] - scores[1]} < 0.10"
+        assert (scores[1] - scores[2]) >= 0.10, f"Gap between moderate and weak {scores[1] - scores[2]} < 0.10"
+
+    def test_bm25_k1_b_explicit(self):
+        """
+        Assert that k1 and b parameters are explicitly passed and stored.
+        """
+        from app.services.matching.bm25_engine import BM25_K1, BM25_B
+        
+        assert BM25_K1 == 1.5, "Expected explicit k1=1.5"
+        assert BM25_B == 0.75, "Expected explicit b=0.75"
 
 
 class TestScorer:
