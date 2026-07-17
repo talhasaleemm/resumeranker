@@ -33,9 +33,12 @@ def compute_cosine_similarity(vec_a: List[float], vec_b: List[float]) -> float:
     """
     Computes cosine similarity between two vectors.
     Since SentenceTransformer vectors are L2-normalized, this is equivalent
-    to the dot product. Shipped/clipped to [0.0, 1.0].
+    to the dot product. Shifted/clipped to [0.0, 1.0].
+    Accepts both Python lists and numpy arrays (pgvector returns numpy arrays).
     """
-    if not vec_a or not vec_b:
+    # Use len() check instead of truthiness to avoid ValueError with numpy arrays
+    # ("The truth value of an array with more than one element is ambiguous")
+    if vec_a is None or vec_b is None or len(vec_a) == 0 or len(vec_b) == 0:
         return 0.0
     dot_product = sum(x * y for x, y in zip(vec_a, vec_b))
     return max(0.0, min(1.0, dot_product))
@@ -93,7 +96,9 @@ def score_candidates(
         
         # 4. Compute Vector Similarity (Cosine Similarity)
         vec_score = 0.0
-        if job_embedding and cand_embedding:
+        # Use explicit None checks + len to avoid ValueError when embeddings are numpy arrays
+        # (pgvector returns numpy arrays whose truthiness requires .any()/.all())
+        if job_embedding is not None and cand_embedding is not None and len(job_embedding) > 0 and len(cand_embedding) > 0:
             vec_score = compute_cosine_similarity(job_embedding, cand_embedding)
             
         tf_score = tfidf_scores[i]
