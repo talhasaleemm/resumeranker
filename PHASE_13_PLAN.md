@@ -1,438 +1,346 @@
-# Phase 13 Plan — BM25 Empirical Re-Calibration
+# PHASE_13_PLAN.md — BM25 Scoring Calibration
 
-**Date written:** 2026-07-17
-**Status:** AWAITING APPROVAL — do not implement until "approved, proceed" is received.
-
----
-
-## Context
-
-DECISIONS.md (Phase 12B entry) flags that `BM25_SATURATION_CAP = 12.0` was calibrated
-against a small synthetic test corpus (7 fixture texts + 7 sample resumes × 3 JDs;
-observed max raw score: 9.65) and must be revisited against real-world-scale data.
-
-Pre-plan empirical investigation has already confirmed the flag is warranted:
-running the existing 7 sample resumes against a verbose 42-token JD produces raw scores
-of **18.45** and **10.01** — the backend engineer resume alone already exceeds the cap of
-12.0 and saturates at 1.0. This means the cap is broken in the current codebase for any
-recruiter writing a detailed, multi-requirement JD. This phase fixes it.
+**Phase:** 13  
+**Status:** AWAITING APPROVAL — do not implement until human replies with "approved, proceed"  
+**Scope:** BM25 scoring calibration only. Weights (30/30/20/20) and all other components are out of scope unless measurement reveals a clear defect, in which case it is flagged here and treated as a separate decision.
 
 ---
 
-## 1. BM25 Hyperparameters — Current State
+## Background and Motivation
 
-**Finding (verified pre-plan):** `BM25Okapi` is instantiated as `BM25Okapi(tokenized_corpus)`
-with no keyword arguments, taking all library defaults:
+`BM25_SATURATION_CAP = 12.0` was set in Phase 12B based on a corpus whose observed maximum raw score was 9.65. That cap has already been shown to be wrong: a realistic verbose JD (42 query tokens) produces raw BM25 scores of 18.45 and 10.01 against test candidates — both candidates' genuine signal already exceeds or saturates the cap before Phase 13 has started any calibration work.
+
+The root defect is not just a wrong constant. There are two separable problems:
+
+1. **k1/b are untuned defaults, never chosen for resume-length documents.** The library defaults are `k1=1.5, b=0.75` (confirmed from `BM25Okapi.__init__` in [rank_bm25/rank_bm25.py](https://github.com/dorianbrown/rank_bm25/blob/master/rank_bm25.py)). These govern how term-frequency saturation and document-length normalization behave. They are sensible for web-search documents but resumes are longer and more repetitive than typical search-engine documents, and job descriptions vary enormously in verbosity (terse 10-token JDs vs. verbose 42-token JDs). Using `b=0.75` (strong length normalization) may over-penalize longer resumes; `k1=1.5` may allow term-frequency to accumulate more than is useful for highly repetitive resume text.
+
+2. **The cap is the wrong abstraction if JD length drives raw score magnitude.** Okapi BM25 raw scores scale with query term count — a 42-token JD produces higher raw scores than an 8-token JD against the same corpus, independent of match quality. A single global cap cannot simultaneously provide good discrimination for both terse and verbose JDs. This is a structural problem that tuning k1/b alone does not fully address.
+
+This plan pursues **both**: (a) evaluate whether tuned k1/b can reduce the sensitivity that causes the cap problem, and (b) replace the single global cap with a length-aware normalization approach if measurement confirms the structural problem is real and material.
+
+
+---
+
+## Element 1 — BM25 Hyperparameters: k1/b Defaults and Tuning Decision
+
+**Confirmed defaults (from rank_bm25 source, `BM25Okapi.__init__`):**
 
 ```
-BM25Okapi.__init__ signature: k1=1.5, b=0.75, epsilon=0.25
+k1 = 1.5    # term-frequency saturation parameter
+b  = 0.75   # document-length normalization strength
+epsilon = 0.25  # IDF floor multiplier (fraction of average_idf applied to negative-IDF terms)
 ```
 
-These are the **original Robertson & Zaragoza (2009) defaults**, not tuned for resume
-matching. Their meaning in this context:
+These are never passed explicitly in `bm25_engine.py` — the engine runs on these defaults.
 
-- **k1 = 1.5**: Term-frequency saturation parameter. A term appearing once contributes
-  roughly 60% of the score it would contribute appearing ∞ times. For resumes — where a
-  keyword appearing 2-3× is common but rarely meaningful beyond 1× — k1=1.5 likely
-  over-rewards repetition compared to a lower value like k1=1.2.
+**What k1 and b actually control:**
 
-- **b = 0.75**: Document-length normalization. A document twice the average length has
-  its TF contribution halved relative to an average-length document. Resume length varies
-  enormously (observed range in current corpus: 6 tokens to 248 tokens after stopword
-  removal), so b=0.75 imposes a heavy penalty on longer, content-rich resumes relative to
-  short ones. A lower b (e.g. 0.5) reduces this length penalty.
+- `k1` governs term-frequency saturation. As `k1 → 0`, a single mention of a query term saturates immediately (binary presence/absence). As `k1` increases, additional occurrences of the term continue to add score. `k1=1.5` is mid-range: a term appearing 5 times contributes roughly 3× the score of one appearance (not 5×). For resume text, where repetition is common but not meaningful signal, a lower `k1` (e.g. 1.2) reduces score inflation from repeated mentions without eliminating them entirely.
 
-**Is k1/b tuning the right fix, or is cap recalibration sufficient?**
+- `b` governs how strongly document length penalizes the TF component. `b=0.75` is strongly normalizing: a 500-token resume is penalized relative to a 200-token resume even if the longer resume has more relevant content. This is appropriate for web documents where length indicates verbosity, but resumes are expected to grow with experience — length often correlates positively with depth. A lower `b` (e.g. 0.5–0.6) would reduce this penalty.
 
-The root diagnosis from Phase 12B was that the cap was set using observed max from too
-small a corpus — it's not that k1/b are catastrophically wrong. The evidence:
+**Approach: both k1/b tuning AND revised normalization, not either/or.**
 
-- Pre-plan scoring shows strong ranking order is preserved across k1/b variants at the
-  current corpus scale (Strong 7.28 > Medium 1.25 > Weak 0.21 under defaults; Strong
-  6.88 > Medium 1.20 > Weak 0.21 under k1=1.2, b=0.75 — order unchanged, magnitude
-  reduced ~5%).
-- The immediate problem is that verbose JDs (42 query tokens) produce raw scores of 18.45
-  for strong matches, which saturates the cap at 1.0. The cap is the binding constraint,
-  not k1/b mistuning.
-- Changing k1/b without also re-deriving the cap would still produce an incorrectly
-  calibrated cap — so the cap recalibration is necessary regardless.
+Tuning k1/b addresses the underlying mechanism (how raw scores are produced). But the Phase 12B finding — that a 42-token JD already produces scores of 18.45 — demonstrates that even with adjusted k1/b, raw score magnitude will still vary with JD query length. A single global cap conflates two different things: absolute match quality and query verbosity. These are separable. Therefore the plan pursues both:
 
-**Decision:** Retain current defaults (k1=1.5, b=0.75) for this phase. The rationale is:
-1. The ranking order across match quality tiers is correct with current defaults.
-2. k1/b tuning is a second-order concern that requires a different type of validation
-   (comparative ranking quality across many query/document pairs, not just cap calibration).
-3. Any k1/b change would invalidate the newly calibrated cap and require another full
-   re-measurement pass — scope creep for a phase whose goal is cap defensibility.
+1. Measure the effect of candidate k1/b values (k1 ∈ {1.2, 1.5}, b ∈ {0.5, 0.75}) on the measured corpus score distribution. The tuned values are adopted if they demonstrably reduce score variance that is attributable to JD length rather than match quality, while preserving discrimination between strong, moderate, and weak matches.
 
-k1/b tuning is logged as future work (see "Observed but out of scope" section).
+2. Evaluate a query-length-aware normalization as an alternative or complement to the global cap. The concrete candidate is score normalization by query token count: `normalized = max(0.0, min(raw / (k * n_query_tokens), 1.0))` where `n_query_tokens` is the post-stopword token count of the job description and `k` is a calibrated scale factor. This directly removes the JD-length dependency from the normalized score, making scores across terse and verbose JDs directly comparable. The measurement task (Element 3) must confirm whether this outperforms a recalibrated global cap before it is adopted.
 
-**However:** The plan does introduce `BM25_K1` and `BM25_B` as named module-level
-constants (currently set to the library defaults, 1.5 and 0.75) in `bm25_engine.py`.
-This makes the parameters explicit and auditable rather than silently defaulted, and makes
-future tuning a one-line change with a documented rationale rather than a magic-number hunt.
 
 ---
 
-## 2. Corpus Requirements
+## Element 2 — Corpus Requirements
 
-### Why bigger-synthetic-only is insufficient
+### Scale and Coverage
 
-LLM-generated resumes share systematic statistical properties that real resumes don't:
-uniform sentence length, repeated boilerplate phrasing ("Experienced professional with
-a passion for…"), vocabulary drawn from the same training distribution as the job
-descriptions used to generate them, and near-absence of the idiosyncratic formatting
-(dense skill lists, terse bullet points, multi-column layouts, inconsistent punctuation)
-that characterizes real submissions. A larger synthetic-only corpus reduces sampling
-noise within that distribution but does not expand the distribution itself.
+The calibration corpus must contain **at least 40–50 distinct job/candidate pairings**, spanning:
 
-The primary consequence for BM25 specifically: raw score magnitude scales with the
-number of distinct matched query tokens. If all synthetic JDs happen to be 15-25 tokens
-(the range used in Phase 12), the observed raw score ceiling will be artificially
-depressed relative to what real recruiters write (which can be 40-100+ tokens for
-senior roles). This is precisely what happened — Phase 12's corpus used short JDs and
-missed the 18.45 score produced by a realistic verbose JD.
+- **Domains:** backend engineering, frontend engineering, data science/ML, DevOps/SRE, mobile (iOS/Android), bioinformatics/computational biology
+- **Seniority levels:** junior (0–2 years), mid-level (3–5 years), senior/staff (6+ years) — at least two seniority levels per domain
+- **Writing styles:** dense keyword lists (ATS-optimized, terse skill bullets), narrative prose (paragraph-form experience descriptions), hybrid (bullet headings + paragraph content), verbosity extremes (terse 8–15 token JDs and verbose 35–50 token JDs)
+- **Match quality tiers:** for each JD, at least one strong-match candidate, one moderate-match candidate (right domain, missing 2–3 key skills or wrong seniority), and one weak/no-match candidate (different domain or unrelated content)
 
-### Approach: synthetic corpus + verified real public text anchors
+This structure ensures the distribution measurement covers the axes that drive BM25 score variance: JD length, resume length, term overlap density, and domain vocabulary divergence.
 
-Full real-world resumes cannot be used (PII constraints, this repo is public). However,
-**public job descriptions** from open job boards are usable as long as they are:
-- Paraphrased, not reproduced wholesale (copyright; attribution where required)
-- Synthetic/fictional candidate resumes matched against them
+### Addressing the Representativeness Problem
 
-**Concrete plan:**
+The Phase 12 cap failed because it was derived from a small all-LLM-generated corpus. LLM-generated text has systematic statistical properties: consistent sentence structure, vocabulary drawn from a bounded "resume cliché" distribution, and length patterns that cluster more tightly than real human writing. Generating 50 more LLM resumes does not fix this — it scales up the same distribution.
 
-1. **Synthetic candidate corpus (40 resumes):** Hand-authored, clearly fictional resumes
-   (names like "Candidate_A_Backend_Senior", no real identifying information) across
-   6 domains × varied seniority × varied writing style:
+**Concrete approach:**
 
-   | Domain | Seniority | Writing style |
-   |--------|-----------|---------------|
-   | Backend (Python/FastAPI) | Junior, Mid, Senior | Dense keyword list |
-   | Backend (Python/FastAPI) | Junior, Mid, Senior | Narrative prose |
-   | Frontend (React/TS) | Mid, Senior | Dense |
-   | Frontend (React/TS) | Mid, Senior | Narrative |
-   | Data Science / ML | Mid, Senior | Dense |
-   | Data Science / ML | Mid, Senior | Narrative |
-   | DevOps / SRE | Mid, Senior | Dense |
-   | DevOps / SRE | Mid, Senior | Narrative |
-   | Mobile (iOS/Android) | Mid, Senior | Dense |
-   | Bioinformatics / Research | Mid, Senior | Dense |
+1. **Real public job postings (transformed, not reproduced verbatim).** The O*NET Open Resource Center publishes occupational task and knowledge data in the public domain (CC-BY 4.0 equivalent), including skill requirement descriptions for hundreds of occupations. These provide authentic vocabulary distributions for each domain at no copyright risk. The plan is to use O*NET task descriptions as the vocabulary source when constructing job descriptions — not to reproduce O*NET text wholesale, but to ground the terminology in real occupational language patterns. Similarly, Kaggle's "Resume Dataset" (Gaurav Dutta, CC0 license) contains hundreds of real-format resumes submitted publicly; a subset of these can be used directly as fixture texts after confirming the dataset's CC0 license status.
 
-   Writing style distinction matters specifically for BM25: a "dense" resume lists
-   skills as comma-separated tokens (`Python, FastAPI, PostgreSQL, Docker`), while
-   "narrative" describes them in sentences (`Built high-throughput REST services using
-   FastAPI and async PostgreSQL with connection pooling`). BM25 IDF behavior differs
-   between these formats and the corpus must cover both.
+2. **Intentional style variation in synthetic content.** For domains where a CC0 dataset source cannot be confirmed (e.g. bioinformatics), LLM-generated fixtures are acceptable, but generation prompts must explicitly force style diversity: write a resume as a terse bullet list, write the same candidate as narrative prose, write a JD with only 8 keywords, write the same JD as a verbose paragraph. These are committed to the fixture directory as separate files, labelled by style variant, not merged.
 
-   Each resume: 200-400 tokens post-stopword-removal (matching the real-sample range
-   of 202-248 tokens seen in current fixtures). Total ~40 resumes.
+3. **Explicit limitation statement.** If by the time of implementation no CC0 resume dataset has been confirmed usable, the plan falls back to synthetic-only. In that case DECISIONS.md must record: "Phase 13 corpus is entirely synthetic. The representativeness limitation of Phase 12 (LLM vocabulary clustering) is partially mitigated by explicit style variation in generation prompts, but has not been eliminated. Cap values derived here should be revalidated when real resume ingestion data becomes available." This entry is mandatory, not optional, if synthetic-only is used.
 
-2. **Real public text anchors (10 paraphrased job descriptions):** Derived from actual
-   public job postings on LinkedIn/Indeed/Hacker News (open positions, publicly visible
-   without login, no paywall), paraphrased to avoid verbatim reproduction, covering:
-   - Backend engineer (terse, ~15 tokens) × 2
-   - Backend engineer (verbose, ~40-60 tokens) × 2
-   - Frontend engineer (medium, ~20 tokens) × 1
-   - Data scientist (medium, ~25 tokens) × 1
-   - DevOps engineer (verbose, ~45 tokens) × 1
-   - ML Engineer (verbose, ~50 tokens) × 1
-   - Mobile developer (terse, ~12 tokens) × 1
-   - Bioinformatics/research (verbose, ~55 tokens) × 1
+### Fixture Format and Versioning
 
-   These 10 JDs are the representativeness anchor: they provide real query-token density
-   and vocabulary distribution. The synthetic resumes are matched against them.
+All corpus fixtures are committed to `tests/fixtures/phase13/` as plaintext `.txt` files (one resume per file, one JD per file) plus a `corpus_manifest.json` that maps each pairing to its: domain, seniority, writing style, expected match tier (strong/moderate/weak), and data source label (synthetic/o*net-grounded/CC0-dataset). This makes every measurement repeatable and auditable.
 
-   **Attribution:** Each paraphrased JD will carry a comment in the fixture file noting
-   the domain and approximate source type (e.g., `# Paraphrased from public backend
-   engineering JD; no verbatim reproduction`). No company names, applicant names, or
-   identifying details retained.
+No fixture is generated ad hoc at test runtime. All are committed, versioned, and re-used by future phases.
 
-3. **Total corpus: 40 resumes × 10 JDs = 400 pairings.** This is well above the 40-50
-   minimum specified, spans all 6 required domains, and includes both terse and verbose
-   JDs (the critical gap in Phase 12's corpus).
-
-### Storage as versioned fixtures
-
-All fixture files committed under `tests/fixtures/phase13/`:
-- `resumes/` — 40 plaintext `.txt` files (not PDF/DOCX; parsing is already tested
-  separately and adding parsing overhead here would slow the measurement script)
-- `job_descriptions/` — 10 `.txt` files
-- `README.md` — describes corpus construction, attribution notes, and methodology
-
-Using `.txt` directly for BM25 measurement means the tokenizer operates on the same
-text the real pipeline would process (post-PDF extraction), without introducing
-extraction variability as a confound.
-
-### Runtime estimate
-
-Pre-plan benchmark: 10 JDs × 50 candidates = 500 pairings in **0.138s**. The Phase 13
-corpus (10 JDs × 40 resumes = 400 pairings) will complete in < 0.2s. Adding percentile
-statistics and output formatting: < 5s total. No timeout risk whatsoever.
 
 ---
 
-## 3. Measuring the Real BM25 Score Distribution
+## Element 3 — Score Distribution Measurement
 
-The measurement script (`tests/fixtures/phase13/measure_bm25_distribution.py`) will:
+**What to measure and report:**
 
-1. Load all 40 resume fixtures and 10 JD fixtures.
-2. Score every JD against the full 40-candidate batch using `compute_bm25_scores`.
-3. Collect all raw positive scores across all 400 pairings.
-4. Report the **full percentile distribution**: p10, p25, p50, p75, p90, p95, p99, max,
-   mean, stdev — not just min/max/median.
-5. Report the distribution separately for:
-   - **Terse JDs** (≤ 20 query tokens): expected lower raw score ceiling
-   - **Verbose JDs** (> 20 query tokens): expected higher ceiling; this is the regime
-     the Phase 12 cap was not calibrated for
-6. Report how many pairs produce raw scores that currently exceed `BM25_SATURATION_CAP`
-   (a direct measure of how broken the current cap is).
+Run `compute_bm25_scores` (raw, before normalization) against every job/candidate pairing in the full calibration corpus. Record: raw score per pairing, JD query token count (post-stopword), resume token count, domain, seniority, writing style, match tier.
 
-**Why percentiles, not max:**
+Report the following statistics on the full distribution of raw scores (strong-match pairings only, moderate-match pairings only, weak/no-match pairings, and all pairings combined):
 
-`max` is the single most outlier-sensitive statistic and is the specific methodology
-that produced the unreliable Phase 12 cap (observed max was 9.65 from the small corpus;
-real verbose JDs produce 18.45, a 91% increase). The p99 is far more stable — it
-tolerates one extreme outlier per 100 pairings before being affected — and represents
-the realistic ceiling for the vast majority of real usage. The cap will be derived from
-the p99 of the verbose-JD subgroup (the hardest regime), with headroom above it. The
-p95 of the same group will be reported as a secondary reference.
+- p10 (10th percentile)
+- p25
+- p50 (median)
+- p75
+- p90
+- p99
+- Maximum (reported alongside its JD token count and resume token count, since max is context-dependent)
+
+**Why percentiles, not min/max:**
+
+The Phase 12 cap was set at `observed_max × 1.24`. Min and max are the two statistics most sensitive to outliers — a single unusually long JD or an atypically repetitive resume will shift them without representing the distribution. The cap's purpose is to establish a normalization reference point that maps a "strong genuine match" to a high but sub-saturating normalized score. For that purpose, p90 (what a strong match typically looks like) and p99 (what a very strong or outlier match looks like) are far more appropriate anchors than the observed maximum. The Phase 12 methodology of using "observed max" as the sole basis is explicitly named as a failure mode in this project and must not be repeated.
+
+**Key analysis question:**
+
+Plot (or tabulate) raw score vs. JD query token count for strong-match pairings. If these are strongly correlated (r > 0.7), the structural problem is confirmed: a single global cap cannot simultaneously provide good discrimination for terse JDs (where strong matches produce e.g. scores of 2–5) and verbose JDs (where the same quality match produces scores of 15–20). In that case the query-length-aware normalization from Element 1 is adopted. If correlation is low (r < 0.4), a recalibrated global cap is sufficient.
+
+This analysis is the decision gate between a global cap and a length-aware normalization. The decision is not made before measurement.
+
+**Run under all candidate k1/b combinations:**
+
+The distribution measurement is run separately for:
+- `k1=1.5, b=0.75` (current defaults)
+- `k1=1.2, b=0.75`
+- `k1=1.5, b=0.5`
+- `k1=1.2, b=0.5`
+
+This produces four sets of percentile tables, allowing direct comparison of how k1/b affect score range, discrimination between match tiers, and sensitivity to JD length. The winning k1/b values are those that: (a) maintain clear separation between strong/moderate/weak match tiers and (b) show lowest correlation between raw score and JD token count.
+
 
 ---
 
-## 4. Proposed New BM25_SATURATION_CAP Derivation
+## Element 4 — Proposed Normalization Approach
 
-**Pre-plan finding that shapes this:**
+The final normalization approach is chosen after Element 3 measurement, not before. This section specifies the two candidates and the decision criteria.
 
-With 7 existing resumes and a verbose 42-token JD:
-- `resume_backend_engineer.pdf`: raw = **18.45** (exceeds current cap of 12.0)
-- `resume_fullstack_dev.pdf`: raw = **10.01** (near cap)
-- Distribution of positive scores across 7 resumes × 6 JDs (n=34 positive pairs):
-  p90 = 10.01, p95 = 17.21, p99 = 18.45, max = 18.45
+### Candidate A: Recalibrated global cap (same structure, better constant)
 
-This directly confirms the cap is insufficient for verbose JDs.
-
-**Derivation approach:**
-
-After running the full Phase 13 corpus measurement, the new cap will be set as:
-
-```
-BM25_SATURATION_CAP = ceil(p99_verbose_jd_subgroup * 1.25)
+```python
+normalized = max(0.0, min(raw / BM25_SATURATION_CAP, 1.0))
 ```
 
-Where:
-- `p99_verbose_jd_subgroup` = the p99 of raw scores from JDs with > 20 query tokens only
-  (the stress test regime)
-- `1.25` headroom factor: places the p99 match at 0.80 normalized (same as Phase 12's
-  design intent), leaving 25% headroom above the measured p99 for unseen denser JDs
+Adopted if: the correlation between raw score and JD token count is low (r < 0.4) for strong-match pairings. The new cap value is set such that the p90 of strong-match raw scores maps to approximately 0.75–0.80 (strong but not saturated, leaving headroom for genuinely exceptional matches). This is the same principle as the Phase 12B calibration, but grounded in a p90 statistic from a properly representative corpus instead of an observed maximum from 7 fixtures.
 
-The `ceil()` rounds to a clean integer to avoid false precision on a heuristic constant.
+The new cap is a named constant `BM25_SATURATION_CAP` with a full calibration comment in the source replacing the existing one. The old constant (12.0) is explicitly deprecated with a note explaining why it was wrong and what measured value replaced it.
 
-This is a deliberate structural improvement over Phase 12's derivation: `p99 × 1.25`
-is outlier-resistant (p99 not max), regime-specific (verbose JDs only, not pooled
-with terse JDs that have lower ceilings), and the 1.25 factor is explicit and reasoned
-rather than implicit in the choice of a round number.
+### Candidate B: Query-length-aware normalization
 
-**Ceiling: the cap must be measured and reported, then set to the derived value.** It
-will NOT be set to "whatever makes existing tests pass." If the derived value is, say,
-28, the cap becomes 28 — regardless of whether that breaks existing test thresholds.
-Any test whose threshold changes as a result will be updated with the correct number and
-the reason documented in the commit message.
+```python
+n_query_tokens = len(_tokenize(query))  # post-stopword token count
+effective_cap = SCALE_K * max(n_query_tokens, MIN_QUERY_TOKENS)
+normalized = max(0.0, min(raw / effective_cap, 1.0))
+```
 
-**Non-constant capping strategy consideration:**
+Where `SCALE_K` is a calibrated constant representing the expected raw BM25 score per query token for a strong genuine match (derived from the corpus), and `MIN_QUERY_TOKENS` is a floor (e.g. 5) to prevent extreme compression from very terse JDs.
 
-The prompt raises the possibility of a JD-length-aware cap (since BM25 raw scores scale
-with query term count). This is correct in principle: a 10-token JD and a 50-token JD
-have fundamentally different raw score ceilings. However, implementing a per-JD cap
-introduces complexity (the cap becomes a function of query length, making it harder to
-reason about composite scores) and requires fitting a scaling function to the measured
-data. For this phase, a single constant derived from the verbose-JD p99 is preferred:
-it is conservative for verbose JDs (the hard case) and slightly over-generous for terse
-JDs (terse JDs already produce lower raw scores and are less likely to hit the cap).
-A query-length-proportional cap is logged as a future refinement.
+Adopted if: the correlation between raw score and JD token count is high (r > 0.4) for strong-match pairings, confirming that JD length is a meaningful confound. `SCALE_K` is calibrated from the corpus as: `p90(raw_score_per_token_for_strong_matches)`, measured across all strong-match pairings.
+
+**Note:** This is a slightly more complex formula but introduces only two named constants. Both are calibrated from data and documented with the same level of evidence required by this project's standing rules (actual numbers, actual command output).
+
+### What does NOT change
+
+The normalization formula continues to be batch-size-independent — normalized score is a deterministic function of the raw score (and optionally the JD text), not of who else is in the batch. The Phase 12B regression test (`test_bm25_normalization_batch_size_independent`) must continue to pass under whatever normalization is chosen.
+
 
 ---
 
-## 5. Validation Plan — Numerical Criteria Defined Before Implementation
+## Element 5 — Validation Plan (Defined Before Implementation)
 
-The following criteria must ALL be satisfied for Phase 13 to be marked complete.
-They are defined here, before any code is written, so success is not retroactively
-defined by whatever the new cap happens to produce.
+Success criteria are stated here. They are not adjusted retroactively to match whatever the new normalization produces.
 
-### Criterion 1: No saturation on genuine strong matches in the full corpus
+### Criterion 1: Ranking correctness across all match tiers
 
-**Definition:** A "strong match" is a resume from the same domain as the JD at mid/senior
-level. A "weak match" is a resume from a different domain.
+For every domain in the corpus, pick three representative pairings: one strong-match candidate, one moderate-match candidate, and one weak/no-match candidate scored against the same JD. The normalized BM25 scores must satisfy:
 
-**Threshold:** After applying the new cap, no strong-match pair in the full 400-pair
-corpus should normalize to exactly 1.0, UNLESS its raw score genuinely places it at the
-absolute ceiling (i.e., above the p99 threshold for that JD length regime). In practice:
-the new cap is derived so p99 maps to 0.80, meaning only the top 1% of pairings saturate.
+```
+strong_match_bm25 > moderate_match_bm25 > weak_match_bm25
+```
 
-Measured as: `count(normalized_bm25 == 1.0) / 400 pairings ≤ 1%`
+with at least a **0.10 gap** between tiers. This gap size is the minimum discrimination that prevents the composite scorer from treating strong and moderate matches as equivalent given BM25's 30% weight. At 30% weight, a 0.10 BM25 gap = 3 final score points — meaningful but not dominant.
 
-### Criterion 2: Strong > Moderate > Weak ordering holds across all 10 JDs
+This must hold for **all six domains**, not just the easiest ones.
 
-For each JD, the median BM25 normalized score of same-domain candidates must exceed the
-median of different-domain candidates:
+### Criterion 2: Batch-size independence
 
-`median(same-domain normalized scores) > median(different-domain normalized scores)`
+A candidate's normalized BM25 score must be identical (within floating-point tolerance, ε < 1e-9) whether it is scored in a batch of 1, 2, 5, or 20+ candidates. This is the core invariant introduced in Phase 12B. The existing regression test `test_bm25_normalization_batch_size_independent` covers this. It must pass unchanged after any new normalization constants are set.
 
-This must hold for all 10 JDs independently.
+### Criterion 3: JD-length independence (or controlled dependence)
 
-### Criterion 3: Score gap is non-trivial
+For a fixed strong-match candidate paired with three JDs of different verbosity levels (short: 8–12 tokens, medium: 18–25 tokens, verbose: 35–50 tokens), normalized BM25 scores must fall within a **0.20 band** of each other. This is the quantitative statement of the JD-length problem: if the band exceeds 0.20, the global cap approach has failed and the length-aware normalization must be used. (Under a correctly calibrated length-aware normalization, this band should be < 0.10.)
 
-A same-domain senior candidate should score at least **2× the normalized BM25** of a
-clearly different-domain candidate (e.g., a bioinformatics resume against a frontend JD).
-Measured as:
-`mean(top-2 same-domain normalized) ≥ 2 × mean(bottom-2 different-domain normalized)`
-for each JD.
+This test does not exist yet and will be written as part of this phase's test suite.
 
-### Criterion 4: Batch-size invariance holds
+### Criterion 4: No saturation for genuine strong matches
 
-The `test_bm25_normalization_batch_size_independent` regression test (added in Phase 12B)
-must pass. No additional regression: `normalized = max(0, min(raw / cap, 1.0))` for any
-raw score, regardless of batch.
+The p90 of normalized BM25 scores for strong-match pairings must be ≤ 0.85. A normalized score of 1.0 (saturation) means additional match quality is invisible to the scorer — it's a flat ceiling. At 30% weight, saturation eliminates up to 30 final score points of discrimination. The cap is calibrated so that strong-but-not-perfect matches do not saturate.
 
-### Criterion 5: Keyword-stuffer scenario still produces correct ranking
+### Criterion 5: End-to-end ranking preservation
 
-`test_keyword_stuffer_rejection_real_embeddings` must still pass: D (genuine frontend)
-beats C (backend stuffer) with real all-MiniLM-L6-v2 embeddings at 30/30/20/20 weights.
-The gap may change from the current +24.15 — report the new number explicitly.
+The keyword-stuffer test (`test_keyword_stuffer_rejection_real_embeddings`) must continue to pass: genuine frontend candidate (D) ranks above backend keyword-stuffer (C) by > 10 points in a batch of 2. This test uses real all-MiniLM-L6-v2 embeddings and was the original driver of the Phase 12B fix. It must not regress.
 
-### Criterion 6: Full test suite passes (87 tests)
+### Numerical criterion for "good enough"
 
-All 87 existing tests pass. Any test whose expected value changes gets an updated value
-with the reason documented in the commit message (not silently patched).
+The implementation is complete when:
+- All five criteria above pass on the full calibration corpus
+- All 87 existing tests continue to pass (no regressions)
+- The calibration constant(s) are documented in source with the specific percentile values they are derived from
+
 
 ---
 
-## 6. Test Fragility Fix — Structural Conversion
+## Element 6 — Structural Test Fragility Fix
 
-Every time BM25 scoring has changed (Phase 12 normalization, Phase 12B cap), tests broke
-because they pinned exact float values that were never meaningful as exact values — they
-were just whatever the scorer happened to produce when the test was written.
+Every scoring change in this project (Phase 11 weight change, Phase 12 normalization change) has broken unrelated tests because they pinned exact float values. This section catalogues all affected tests and specifies the structural fix, so future scoring changes do not repeat this pattern.
 
-### Category A: Tests whose purpose is "is the ranking correct?"
-These should assert ordering/direction, not exact values.
+### The structural rule
 
-| Test | Current assertion | Purpose | Change |
-|------|-------------------|---------|--------|
-| `test_bm25_engine` | `scores[0] > scores[1]`, `scores[2] > scores[1]` | Ranking order | Already ordering — no change needed |
-| `test_bm25_engine` | `min(scores) >= 0.0`, `max(scores) <= 1.0` | Bounds | Already range — no change needed |
-| `test_bm25_stopword_filtering_independent` | `scores[1] > scores[0]` | Ranking order | Already ordering — no change needed |
-| `test_score_candidates` | `top_cand["final_score"] > bot_cand["final_score"]` | Ranking direction | Already ordering — no change needed |
-| `test_keyword_stuffer_rejection_at_20_percent_vector_weight` | `score_gap >= 5.0` | Gap magnitude | **Needs update:** threshold was 3.0 → updated to 5.0 post-Phase-12B based on cap-based numbers; re-verify after new cap and update to measured value |
-| `test_keyword_stuffer_rejection_real_embeddings` | `D.final > C.final` | Ranking direction | Already ordering — verify still holds |
+A test's assertion type must match its purpose:
+- **If the test's purpose is "does the ranking order correct?"** → use ordering assertions (`assert score_a > score_b`) or relative comparisons (`assert (score_a - score_b) >= threshold`). Never assert an exact float.
+- **If the test's purpose is "does the formula produce the right arithmetic result?"** → an exact-value assertion is correct. But the formula must be stated explicitly in the assertion's failure message so a future reader can verify it is still arithmetically correct and not just empirically matching a stale expected value.
 
-### Category B: Tests whose purpose is "does the arithmetic formula produce the correct output?"
-These legitimately pin exact values because they're testing the scorer formula itself.
+### Classification of existing BM25/score-touching tests
 
-| Test | Current assertion | Purpose | Change |
-|------|-------------------|---------|--------|
-| `test_e2e_flow.py::test_full_e2e_recruiter_workflow` | `final_score == pytest.approx(expected_final, abs=0.01)` | Formula consistency (expected_final is computed from returned components, so it's self-consistent regardless of what values they take) | **Keep** — this is self-referential, not a pinned magic number |
-| `test_bm25_normalization_batch_size_independent` | `abs(norm - expected) < 1e-9` | Formula `max(0, min(raw/CAP, 1.0))` produces correct output | **Keep** — this is explicitly testing the formula, not a specific score value |
-| `test_keyword_stuffer_rejection_real_embeddings` | `abs(manual - final_score) < 0.01` | Transparency: score verifiable from components | **Keep** — formula verification, not a pinned value |
+**Category 1 — Ordering/ranking tests (purpose: correct relative ranking)**
 
-### Category C: Tests added in Phase 13
-The new corpus-based BM25 distribution tests (Criterion 1–3 above) will assert:
-- `count(normalized == 1.0) / n ≤ 0.01` — range assertion
-- `median(same-domain) > median(different-domain)` — ordering assertion
-- `mean(top-2) >= 2 × mean(bottom-2)` — ratio assertion
+These already use ordering assertions and are structurally correct. No change needed to their assertion style. They may need updated threshold values if normalization changes materially affect the gap magnitude.
 
-None will pin exact float values.
+| Test | File | Current assertion | Status |
+|------|------|------------------|--------|
+| `test_bm25_engine` | `test_matching.py` | `scores[0] > scores[1]`, `scores[2] > scores[1]`, bounds checks | Already ordering — safe |
+| `test_bm25_stopword_filtering` | `test_matching.py` | `max(raw) == 0.0` (zero-overlap structural) | Safe — tests zero, not a calibrated value |
+| `test_bm25_stopword_filtering_independent` | `test_matching.py` | `scores[1] > scores[0]` | Already ordering — safe |
+| `test_score_candidates` | `test_matching.py` | `top_cand["final_score"] > bot_cand["final_score"]`, `top_cand["candidate_id"] == "cand_1"` | Already ordering — safe |
+| `test_keyword_stuffer_rejection_at_20_percent_vector_weight` | `test_phase12_weight_validation.py` | `D_final > C_final`, gap >= 5.0 | Ordering + threshold — acceptable; threshold may need updating if normalization changes gap magnitude, but the direction assertion is permanent |
+| `test_keyword_stuffer_rejection_real_embeddings` | `test_phase12_weight_validation.py` | `sim_d > sim_c`, `D_final > C_final`, `abs(manual - reported) < 0.01` | Mixed: direction (safe), transparency check (safe, formula-explicit) |
+| `test_bm25_normalization_batch_size_independent` | `test_matching.py` | `normalized == max(0, min(raw/CAP, 1.0))` (formula-explicit), `strong_norm < 1.0`, `zero_norm == 0.0`, `strong_norm > 0.0` | Formula-explicit + structural bounds — correct form; **will need updated expected formula if normalization formula changes in Phase 13** |
 
-### Summary: no tests currently need structural conversion
-The existing tests are already correctly structured — they use ordering and range
-assertions rather than pinned floats, with the exception of `score_gap >= 5.0` (which
-needs to be updated to the new measured value after the cap changes, not converted to
-a different structure). The fragility issue in prior phases came from applying a cap
-change without understanding what the new numbers would be — this phase derives the
-numbers first and sets thresholds based on them.
+
+**Category 2 — Arithmetic transparency tests (purpose: verify formula mechanics)**
+
+These assert the formula explicitly, not an empirically observed float. They are structurally correct in form. If the normalization formula changes, the expected formula in the test must be updated to reflect the new formula — not relaxed.
+
+| Test | File | What it asserts | Required change in Phase 13 |
+|------|------|----------------|------------------------------|
+| `test_bm25_normalization_batch_size_independent` Property 1 | `test_matching.py` | `norm == max(0, min(raw/BM25_SATURATION_CAP, 1.0))` | If formula changes to length-aware, update to `norm == max(0, min(raw/(SCALE_K * n_tokens), 1.0))`. The form must remain formula-explicit. |
+| Transparency check in `test_keyword_stuffer_rejection_real_embeddings` | `test_phase12_weight_validation.py` | `abs((tfidf*0.3 + bm25*0.3 + skills*0.2 + vector*0.2)*100 - final_score) < 0.01` | No change — this tests the composite formula, not the BM25 normalization formula. Passes regardless of cap value. |
+
+**Category 3 — Tests that use exact BM25 scores purely coincidentally (must be converted)**
+
+After reviewing all test files, there are **no tests in the suite that pin a specific numeric BM25 raw score or a specific normalized BM25 float value as an expected constant** (e.g. `assert bm25_score == 0.342`). The Phase 12B regression tests deliberately used formula-explicit or structural-bound assertions to avoid this. The `test_e2e_flow.py` uses `pytest.approx` for `final_score` but derives it algebraically from the component scores at runtime, not from a hardcoded expected value — this is the correct pattern and should be preserved.
+
+**The one test requiring review:** `test_e2e_flow.py::test_keyword_stuffer_rejection_real_embeddings` — the gap threshold is `>= 10.0` (stated in Element 5, Criterion 5 of this plan). If the current threshold in the test differs from this criterion, it must be updated to match the stated criterion, not left at its current value.
+
+### New tests this phase must add (structural additions)
+
+All new tests use ordering or formula-explicit assertions only. No hardcoded expected floats.
+
+1. `test_bm25_jd_length_independence` — Criterion 3 from Element 5: same strong-match candidate, three JD lengths, normalized scores within 0.20 band (or 0.10 if length-aware normalization is adopted). This test is written against the chosen normalization approach after measurement, but its assertion form and threshold are committed before measurement begins.
+
+2. `test_bm25_tier_discrimination` — Criterion 1 from Element 5: for each of the six domains, strong > moderate > weak with ≥ 0.10 gap between tiers. Parameterized over the calibration corpus fixture manifest.
+
+3. `test_bm25_k1_b_explicit` — If k1/b are changed from defaults, a test instantiates `BM25Okapi` with the chosen k1/b and verifies the parameters are stored (accesses `bm25.k1` and `bm25.b`). Prevents silent regression to library defaults if the code is modified.
+
 
 ---
 
-## 7. Impact Assessment — Blast Radius
+## Element 7 — Impact Assessment: Full Blast Radius
 
-Tests that assert a specific BM25 or final_score **value** (not just ordering):
+Every existing test that asserts a specific BM25 or final_score value, plus every test that imports from `bm25_engine.py` or uses `score_candidates`.
+
+### Tests that directly import from `bm25_engine.py`
+
+| File | What it imports | Direct assertion on BM25 output |
+|------|----------------|--------------------------------|
+| `tests/test_matching.py` | `compute_normalized_bm25_scores`, `compute_bm25_scores`, `BM25_SATURATION_CAP` | Structural bounds (`>= 0.0`, `<= 1.0`, `> 0.0`, `== 0.0`), ordering, formula-explicit check using `BM25_SATURATION_CAP`. **Will break if: normalization formula changes (Property 1 formula-check will fail unless updated), or if `BM25_SATURATION_CAP` is renamed.** |
+| `tests/test_phase12_weight_validation.py` | indirectly via `score_candidates` | No direct `bm25_score` value assertion — uses final_score ordering and gap thresholds. Unlikely to break from normalization change alone. |
+
+### Tests that call `score_candidates` (final_score assertions)
+
+| File | Test | final_score assertion type | Risk |
+|------|------|---------------------------|------|
+| `tests/test_matching.py` | `test_score_candidates` | `top > bot` (ordering only) | None |
+| `tests/test_matching.py` | `test_matched_and_missing_skills_preserve_literal_case` | No score assertion | None |
+| `tests/test_e2e_flow.py` | `test_full_e2e_match_flow` | `pytest.approx(runtime-computed expected, abs=0.01)`, `> 0.0` | Low — expected value is computed from components at runtime, not hardcoded. Will not break from normalization change unless the component values change. |
+| `tests/test_phase12_weight_validation.py` | `test_keyword_stuffer_rejection_at_20_percent_vector_weight` | `D > C`, gap >= 5.0 | Low for direction; **gap threshold (5.0) may need updating** if BM25 contribution changes significantly. |
+| `tests/test_phase12_weight_validation.py` | `test_keyword_stuffer_false_positive_at_40_percent_vector_weight` | `gap >= 3.0` / stuffer-doesn't-win | Low risk — conditional assertion, will need re-evaluation against new normalization. |
+| `tests/test_phase12_weight_validation.py` | `test_keyword_stuffer_rejection_real_embeddings` | `D > C`, `abs(manual - reported) < 0.01` | Low — direction safe; transparency check safe. Gap is reported but not asserted at a specific threshold. |
+
+### Tests asserting `bm25_score > 0.0` or `bm25_score == 0.0` directly on response payloads
 
 | File | Test | Assertion | Risk |
 |------|------|-----------|------|
-| `tests/test_matching.py` | `test_bm25_engine` | `min(scores) >= 0.0`, `max(scores) <= 1.0` | Low — bounds hold for any valid cap |
-| `tests/test_matching.py` | `test_bm25_normalization_batch_size_independent` | `abs(norm - expected) < 1e-9`, `strong_norm < 1.0`, `strong_norm > 0.0`, `zero_norm == 0.0` | Low — all structural; only `< 1.0` could break if strong match saturates at new cap, but design intent is to prevent that |
-| `tests/test_phase12_weight_validation.py` | `test_keyword_stuffer_rejection_at_20_percent_vector_weight` | `score_gap >= 5.0` | **Medium** — gap magnitude will change with new cap; needs re-measurement and threshold update |
-| `tests/test_phase12_weight_validation.py` | `test_keyword_stuffer_rejection_real_embeddings` | `abs(manual - final_score) < 0.01` | Low — self-consistent formula check |
-| `tests/test_e2e_flow.py` | `test_full_e2e_recruiter_workflow` | `final_score == pytest.approx(expected_final, abs=0.01)` | Low — self-consistent |
-| `tests/test_e2e_flow.py` | `test_full_e2e_recruiter_workflow` | `skill_score == 1.0`, `tfidf_score > 0.0`, `final_score > 0.0` | Low — unaffected by BM25 cap change |
+| `tests/test_e2e_flow.py` | `test_full_e2e_match_flow` | No assertion on `bm25_score` value directly (the `assert bm25_score > 0.0` was removed in Phase 12B) | None |
 
-**All other test files** (`test_auth.py`, `test_authorization.py`, `test_api_jobs.py`,
-`test_api_resumes.py`, `test_persistence.py`, `test_parser.py`, `test_ocr.py`,
-`test_tagger.py`, `test_rate_limiting.py`) — confirmed no BM25 or final_score value
-assertions. No changes required.
+### Tests that mention BM25 in weights payloads (not in assertions)
 
----
+| File | Context |
+|------|---------|
+| `tests/test_matches_endpoint.py` | Sends `"bm25": 0.3` / `"bm25": 0.5` in request payloads — tests the API input validation, not the scoring output. No impact from normalization changes. |
+| `tests/test_e2e_flow.py` | Sends `"bm25": 0.4` in request payload. Same — no impact. |
 
-## Files to Create / Modify
+### Summary: tests that WILL require code changes
 
-### New files
-- `tests/fixtures/phase13/README.md` — corpus methodology, attribution, construction notes
-- `tests/fixtures/phase13/resumes/` — 40 synthetic plaintext resume fixtures
-- `tests/fixtures/phase13/job_descriptions/` — 10 JD fixtures (synthetic + paraphrased)
-- `tests/fixtures/phase13/measure_bm25_distribution.py` — measurement script (committed,
-  runnable as `docker compose exec app python tests/fixtures/phase13/measure_bm25_distribution.py`)
-- `tests/test_bm25_calibration.py` — automated tests for Criteria 1–3 above, using the
-  Phase 13 corpus as fixtures
+1. **`tests/test_matching.py::TestEngines::test_bm25_normalization_batch_size_independent`** — Property 1 formula-check (`norm == max(0, min(raw/BM25_SATURATION_CAP, 1.0))`) will fail if the normalization formula is changed to length-aware. Must be updated to the new formula. This is the right outcome: the test is testing the formula, and updating it is correct, not breakage.
 
-### Files to modify
-- `app/services/matching/bm25_engine.py` — add `BM25_K1` and `BM25_B` named constants;
-  update `BM25_SATURATION_CAP` to the derived value; update `BM25Okapi` instantiation to
-  use the named constants; update calibration comment
-- `tests/test_matching.py` — update `score_gap >= 5.0` threshold in
-  `test_keyword_stuffer_rejection_at_20_percent_vector_weight` to the new measured value
-- `DECISIONS.md` — update BM25_SATURATION_CAP entry with new value and derivation rationale
+2. **`tests/test_phase12_weight_validation.py::test_keyword_stuffer_rejection_at_20_percent_vector_weight`** — The `gap >= 5.0` threshold was calibrated under Phase 12B's `BM25_SATURATION_CAP = 12.0`. If the new normalization raises the discrimination gap (expected, since the stuffer should score even lower under a well-calibrated normalization), the threshold needs updating upward. If it shrinks, that is a signal that the new normalization is worse, not better, and must be investigated.
 
-### Files NOT to modify
-- `app/config.py` — weights unchanged (30/30/20/20 not re-litigated this phase)
-- Any model, migration, API, auth, or frontend files
+### Tests with no expected impact (no BM25 or final_score assertions)
+
+`test_parser.py`, `test_persistence.py`, `test_auth.py`, `test_authorization.py`, `test_api_resumes.py`, `test_api_jobs.py`, `test_ocr.py`, `test_tagger.py`, `test_rate_limiting.py` — none of these touch BM25 or composite scoring. Zero blast radius.
+
 
 ---
 
-## Observed but out of scope
+## Implementation Sequence (for reference — not to be started until approved)
 
-1. **k1/b hyperparameter tuning:** The analysis above shows k1/b don't explain the
-   primary problem (cap calibration does), and tuning them without a comparative ranking
-   quality evaluation across many query/document pairs would be premature. Logged for a
-   future phase that includes proper A/B evaluation methodology.
-
-2. **Query-length-proportional cap:** BM25 raw scores scale with query token count
-   (empirically: 6-token JD produces max ~2.6; 42-token JD produces max ~18.5 with the
-   same corpus). A proportional cap `f(|query|)` would be more principled than a single
-   constant. Deferred because it requires fitting a scaling function to the measured data
-   and adds composite-score reasoning complexity. Worth revisiting if the single-constant
-   cap still shows significant compression at the terse end.
-
-3. **Weight split re-evaluation:** PROGRESS_LOG notes 30/30/20/20 is still provisional.
-   The Phase 13 corpus provides a 10-JD × 40-resume baseline that could support weight
-   re-evaluation, but that is a separate phase decision. If the BM25 recalibration reveals
-   an obvious imbalance, it will be flagged here under a separate heading rather than
-   fixed inline.
-
-4. **BM25 IDF small-corpus behavior:** The currently documented behavior (BM25=0.0 in
-   1–2 candidate batches) is correct and accepted. Phase 13 does not change this.
+1. Confirm usability of CC0 corpus sources (Kaggle Resume Dataset license, O*NET usage terms). If confirmed, download and prepare a representative subset. If not confirmed, generate synthetic fixtures with explicit style variation as described in Element 2.
+2. Build corpus fixture files in `tests/fixtures/phase13/` and commit `corpus_manifest.json`.
+3. Write and run the distribution measurement script (raw scores × k1/b grid × all pairings). Report full percentile table in this document's Implementation Notes section.
+4. Perform the JD-length correlation analysis (Criterion 3). Choose normalization approach (global cap or length-aware) based on the correlation result.
+5. Determine final k1/b values from the distribution comparison tables.
+6. Update `bm25_engine.py`: pass explicit k1/b to `BM25Okapi`, replace `BM25_SATURATION_CAP` constant (or add length-aware normalization), update calibration comment with actual measured numbers.
+7. Update `test_bm25_normalization_batch_size_independent` Property 1 formula if the normalization formula changed.
+8. Write new tests: `test_bm25_jd_length_independence`, `test_bm25_tier_discrimination`, `test_bm25_k1_b_explicit`.
+9. Update gap thresholds in `test_keyword_stuffer_rejection_at_20_percent_vector_weight` if the new normalization changes the measured gap.
+10. Run the full test suite (87 existing + new tests) inside Docker. Report raw output.
+11. Run `docker-compose exec -T app pytest tests/ -v` and confirm 0 failures before committing.
+12. Commit in logical atomic units: (a) corpus fixtures + manifest, (b) measurement script + results, (c) bm25_engine.py changes, (d) test updates.
 
 ---
 
-## Implementation Order (after "approved, proceed")
+## Observed but Out of Scope
 
-1. Build the 40-resume + 10-JD corpus. Commit to `tests/fixtures/phase13/`.
-2. Run measurement script. Report the percentile distribution here (will be filled in
-   post-measurement, before touching `bm25_engine.py`).
-3. Derive `BM25_SATURATION_CAP` from `ceil(p99_verbose × 1.25)`. Verify Criteria 1–3
-   are satisfied at the derived value before committing anything.
-4. Update `bm25_engine.py`: add `BM25_K1`, `BM25_B` constants; update cap; update
-   `BM25Okapi` instantiation; update calibration comment.
-5. Update `test_matching.py`: update `score_gap >= 5.0` to measured value.
-6. Add `tests/test_bm25_calibration.py` with Criteria 1–3 tests.
-7. Run full test suite (87 existing + new calibration tests). Report output.
-8. Update `DECISIONS.md`.
-9. Update `PROGRESS_LOG.md` (only once all above verified).
-10. Commit in atomic units: corpus, measurement, engine fix, tests, docs.
+The following issues were observed while reading the codebase for this plan but are not addressed in Phase 13. Each is logged here for future tracking.
+
+1. **30/30/20/20 weight finalization is still deferred.** DECISIONS.md and PROGRESS_LOG.md both mark these weights as provisional pending BM25 normalization fix and production-scale validation. Phase 13's measurement will produce a cleaner scoring foundation, after which weight validation should be Phase 14's first task. Not changed here.
+
+2. **`test_keyword_stuffer_false_positive_at_40_percent_vector_weight`** uses a conditional structure (`if gap < 3.0: pytest.fail(...)`) rather than a direct assertion. This produces test output that can look like a pass when it is actually documenting a known failure. The test is annotated "document the result rather than assert a specific outcome" — that is a testing anti-pattern when the "observation" is actually a condition that should fail. This warrants a structural rewrite in a future phase focused on test quality. Not changed here.
+
+3. **`scratch_test_bm25_ablation.py` and other `scratch_*.py` files** in `tests/` are working artifacts that were never cleaned up. They are not collected by pytest (no `test_` prefix on the class/function names that are collected), but they add noise to the test directory. These should be deleted or moved to a `scripts/` directory in a future cleanup pass. Not changed here.
+
+4. **The concurrent-duplicate-rejection test** is documented as occasionally flaky. This is a pre-existing known issue, not introduced by Phase 13.
+
+---
+
+## Standing Project Rules Acknowledgment
+
+- The hard checkpoint rule is in effect. This document is the checkpoint. No implementation begins until a human replies with the exact words **"approved, proceed"**.
+- No `.env`, secrets, or credentials will be committed.
+- Corpus fixtures use synthetic or legitimately reusable public data only — no real PII, no verbatim reproduction of copyrighted job postings.
+- All constants in the final implementation are derived from measured data with reported evidence (actual numbers, actual script output), not chosen to make a specific test pass.
+- PROGRESS_LOG.md will be updated with a Phase 13 section only after the phase is complete and all tests are passing.
+- If implementation reveals that the 30/30/20/20 weight split is now clearly wrong under the new normalization, that is flagged as a separate decision and not changed inline.
