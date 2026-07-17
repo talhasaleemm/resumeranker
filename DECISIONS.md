@@ -56,5 +56,6 @@ This is not a "convenient assumption" — this is a hard boundary. Crossing it w
     - Personal URLs embedded in project descriptions (e.g., "Deployed to my personal site at example.com/myproject")
     - Location-specific details that could narrow candidate identity (e.g., "Led 5-person team at Acme Corp's Austin office")
   - *Validation Status:* This gap has been identified and documented, but NOT mitigated. Current testing uses only clean synthetic fixtures.
+  - *Phase 12 Implementation Confirmation (2026-07-17):* The as-implemented embedding text construction in `app/worker.py` uses `parsed_experience` description bullets and `parsed_projects` description text directly. These fields contain free-form text that can include buried PII. This known, accepted risk applies unchanged to the shipped construction — no content-scanning or scrubbing was added.
 
 

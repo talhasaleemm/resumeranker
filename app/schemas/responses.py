@@ -28,6 +28,7 @@ class MatchCandidate(BaseModel):
     tfidf_score: float
     bm25_score: float
     skill_score: float
+    vector_score: float
     final_score: float
     explanation_log: dict[str, Any]
 
