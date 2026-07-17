@@ -69,8 +69,8 @@ Resumes flow through a linear pipeline before scores are persisted:
               │         POST /api/v1/matches/    │
               │                                 │
               │  ┌──────────┐ ┌───────────────┐ │
-              │  │  TF-IDF  │ │  BM25Okapi    │ │  (configurable weights,
-              │  │  cosine  │ │  + min-max    │ │   must sum to 1.0)
+              │  │  TF-IDF  │ │  BM25Okapi    │ │  (finalized weights:
+              │  │  cosine  │ │  + length     │ │   30/30/20/20)
               │  │ similarity│ │  normalise    │ │
               │  └────┬─────┘ └──────┬────────┘ │
               │       │              │           │
@@ -318,6 +318,12 @@ curl -s -X POST http://localhost:8001/api/v1/matches/ \
 4. **Skill normalisation via taxonomy JSON.** Raw skill strings extracted by the NER pipeline are mapped to canonical forms before matching using `skill_taxonomy.json` (e.g. `"js"` → `"javascript"`, `"NodeJS"` → `"node.js"`). New aliases can be added without touching application code.
 
 5. **Candidate deduplication via email → SHA256 hash fallback.** When ingesting resumes, the system first tries to match on email address. If no email is present, it falls back to a SHA256 hash of the raw text. Both constraints are enforced by partial unique indexes in PostgreSQL, making deduplication concurrent-safe.
+
+---
+
+## Security Boundaries
+
+By design, this system operates under a synthetic demo environment constraint. **Structural PII redaction** is employed (e.g. encrypting standard PII columns), but deep **NER-based PII scanning inside raw text is intentionally omitted**. This means that if real-world PII was ingested, the raw text fields might leak data. We exclusively use synthetic, O*NET-grounded datasets to bypass this limitation and maintain a secure public portfolio piece.
 
 ---
 

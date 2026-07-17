@@ -18,7 +18,7 @@ from app.services.matching.scorer import score_candidates
 from app.services.encryption import decrypt_text, decrypt_json
 from app.config import get_settings
 from app.rate_limiter import limiter
-from app.schemas.responses import MatchResponse, MatchCandidate
+from app.schemas.responses import MatchResponse, MatchCandidate, AsyncAcceptedResponse
 from app.worker import score_candidates_task
 from fastapi.responses import JSONResponse
 from app.models.recruiter import Recruiter
@@ -51,7 +51,7 @@ class MatchRequest(BaseModel):
     weights: Optional[MatchWeights] = None
 
 
-@router.post("/", response_model=MatchResponse)
+@router.post("/", response_model=AsyncAcceptedResponse, status_code=202)
 @limiter.limit("60/minute")
 async def match_candidates(
     request: Request, 
@@ -86,11 +86,8 @@ async def match_candidates(
         weights=match_request.weights.model_dump() if match_request.weights else None,
     )
 
-    return JSONResponse(
-        status_code=202,
-        content={
-            "status": "accepted",
-            "task_id": task.id,
-            "message": "Matching is being processed. Use GET /api/v1/tasks/{task_id} to check status.",
-        },
+    return AsyncAcceptedResponse(
+        status="accepted",
+        task_id=task.id,
+        message="Matching is being processed. Use GET /api/v1/tasks/{task_id} to check status.",
     )

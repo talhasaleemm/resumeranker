@@ -42,7 +42,7 @@ class TestEngines:
             "I am a backend engineer.",
             "React React React frontend developer"
         ]
-        scores = compute_normalized_bm25_scores(query, docs, n_query_tokens=len(query.split()))
+        scores = compute_normalized_bm25_scores(query, docs)
         assert len(scores) == 3
         assert min(scores) >= 0.0
         assert max(scores) <= 1.0
@@ -56,7 +56,7 @@ class TestEngines:
             "senior backend developer with 10 years experience",
             "junior devops engineer with 2 years experience"
         ]
-        scores = compute_normalized_bm25_scores(query, docs, n_query_tokens=len(query.split()))
+        scores = compute_normalized_bm25_scores(query, docs)
         # Because we strip "senior", "developer", "with", "years", "experience", "engineer", "junior",
         # the query becomes "frontend 5".
         # Doc 1 becomes "backend 10".
@@ -78,7 +78,7 @@ class TestEngines:
             "yet another unrelated document"
         ]
         from app.services.matching.bm25_engine import compute_normalized_bm25_scores
-        scores = compute_normalized_bm25_scores(query, docs, n_query_tokens=len(query.split()))
+        scores = compute_normalized_bm25_scores(query, docs)
         # Standard stopwords (looking, for, a) are stripped.
         # Query becomes ["backend", "python", "programmer"].
         # Doc 1 matches only "programmer".
@@ -129,7 +129,7 @@ class TestEngines:
         bm25 = BM25Okapi(tokenized_corpus)
         sum_idf = sum(bm25.idf.get(t, 0.0) for t in tokenized_query)
         
-        normalized_scores = compute_normalized_bm25_scores(query, docs, len(query.split()))
+        normalized_scores = compute_normalized_bm25_scores(query, docs)
 
         # Property 1: normalized score equals max(0, min(raw/(sum_idf * SCALE_FACTOR), 1.0))
         for i, (raw, norm) in enumerate(zip(raw_scores, normalized_scores)):
@@ -165,8 +165,8 @@ class TestEngines:
         
         docs = [candidate, zero_match]
         
-        norm_verbose = compute_normalized_bm25_scores(verbose_jd, docs, len(verbose_jd.split()))[0]
-        norm_terse = compute_normalized_bm25_scores(terse_jd, docs, len(terse_jd.split()))[0]
+        norm_verbose = compute_normalized_bm25_scores(verbose_jd, docs)[0]
+        norm_terse = compute_normalized_bm25_scores(terse_jd, docs)[0]
         
         assert abs(norm_verbose - norm_terse) < 0.10, (
             f"Expected tight band < 0.10, got {norm_verbose} vs {norm_terse}"
@@ -184,7 +184,7 @@ class TestEngines:
         weak = "Junior developer with basic scripting."
         
         docs = [strong, moderate, weak]
-        scores = compute_normalized_bm25_scores(query, docs, len(query.split()))
+        scores = compute_normalized_bm25_scores(query, docs)
         
         assert scores[0] > scores[1], "Strong should beat moderate"
         assert scores[1] > scores[2], "Moderate should beat weak"

@@ -35,6 +35,16 @@ class MatchCandidate(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AsyncAcceptedResponse(BaseModel):
+    status: str
+    task_id: str
+    message: str
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
 class MatchResponse(BaseModel):
     """Response for POST /api/v1/matches/"""
     status: str

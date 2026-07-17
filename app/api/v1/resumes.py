@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.rate_limiter import limiter
-from app.schemas.responses import ResumeUploadResponse
+from app.schemas.responses import ResumeUploadResponse, AsyncAcceptedResponse, MessageResponse
 from app.worker import ingest_candidate_task
 from app.models.recruiter import Recruiter
 from app.services.auth_service import get_current_active_recruiter
@@ -29,7 +29,7 @@ ALLOWED_MIMETYPES = {
 }
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
-@router.post("/", summary="Ingest a candidate resume", response_model=ResumeUploadResponse)
+@router.post("/", summary="Ingest a candidate resume", response_model=AsyncAcceptedResponse, status_code=202)
 @limiter.limit("10/minute")
 async def upload_resume(
     request: Request, 
@@ -73,17 +73,14 @@ async def upload_resume(
         recruiter_id=str(current_user.id)
     )
     
-    return JSONResponse(
-        status_code=202,
-        content={
-            "status": "accepted",
-            "task_id": task.id,
-            "message": "Resume is being processed. Use GET /api/v1/tasks/{task_id} to check status.",
-        },
+    return AsyncAcceptedResponse(
+        status="accepted",
+        task_id=task.id,
+        message="Resume is being processed. Use GET /api/v1/tasks/{task_id} to check status.",
     )
 
-@router.get("/", summary="List all candidates")
+@router.get("/", summary="List all candidates", response_model=MessageResponse)
 @limiter.limit("60/minute")
 async def list_candidates(request: Request):
     """List candidates — not yet implemented."""
-    return {"message": "Candidate listing not yet implemented."}
+    return MessageResponse(message="Candidate listing not yet implemented.")

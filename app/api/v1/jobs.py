@@ -46,8 +46,10 @@ async def create_job(
     await db.refresh(job)
     return JobCreateResponse(status="success", job_id=job.id)
 
-@router.get("/", summary="List all jobs")
+from app.schemas.responses import JobCreateResponse, MessageResponse
+
+@router.get("/", summary="List all jobs", response_model=MessageResponse)
 @limiter.limit("60/minute")
 async def list_jobs(request: Request):
     """List jobs — not yet implemented."""
-    return {"message": "Job listing not yet implemented."}
+    return MessageResponse(message="Job listing not yet implemented.")

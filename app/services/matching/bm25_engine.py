@@ -74,7 +74,7 @@ def compute_bm25_scores(query: str, documents: List[str]) -> List[float]:
     return scores.tolist()
 
 
-def compute_normalized_bm25_scores(query: str, documents: List[str], n_query_tokens: int) -> List[float]:
+def compute_normalized_bm25_scores(query: str, documents: List[str]) -> List[float]:
     """
     Computes BM25 scores and normalizes them to [0.0, 1.0] using Length-Aware Normalization.
 
