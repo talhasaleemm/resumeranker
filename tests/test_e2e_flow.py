@@ -115,4 +115,9 @@ def test_full_e2e_recruiter_workflow():
         assert aisha_match["final_score"] == pytest.approx(expected_final, abs=0.01)
         assert aisha_match["skill_score"] == 1.0
         assert aisha_match["tfidf_score"] > 0.0
-        assert aisha_match["bm25_score"] > 0.0
+        # Note: bm25_score may be 0.0 in single-candidate batches — BM25 IDF requires
+        # at least 3 documents for a positive score when only 1 doc matches the query
+        # (IDF = log((N-n+0.5)/(n+0.5)) < 0 when N=1 or N=2 with n=1). This is
+        # expected correct behavior under cap-based normalization; it was masked before
+        # by min-max inflation (which gave 1.0 to any non-zero raw score).
+        assert aisha_match["final_score"] > 0.0

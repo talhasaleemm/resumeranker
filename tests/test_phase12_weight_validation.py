@@ -93,27 +93,23 @@ class TestPhase12WeightValidation:
         
         # Print component breakdown for documentation
         score_gap = candidate_d_result["final_score"] - candidate_c_result["final_score"]
-        print(f"\n=== Mock-Embedding: 20% Vector Weight (30/30/20/20) ===")
+        print(f"\n=== Mock-Embedding: 20% Vector Weight (30/30/20/20) — post BM25 fix ===")
         print(f"Candidate C (Backend Stuffer): {candidate_c_result['final_score']:.2f}")
         print(f"  TF-IDF={candidate_c_result['tfidf_score']:.4f}  BM25={candidate_c_result['bm25_score']:.4f}  "
               f"Skills={candidate_c_result['skill_score']:.4f}  Vector={candidate_c_result['vector_score']:.4f}")
         print(f"Candidate D (Genuine Frontend): {candidate_d_result['final_score']:.2f}")
         print(f"  TF-IDF={candidate_d_result['tfidf_score']:.4f}  BM25={candidate_d_result['bm25_score']:.4f}  "
               f"Skills={candidate_d_result['skill_score']:.4f}  Vector={candidate_d_result['vector_score']:.4f}")
-        print(f"Score Gap (mock embeddings): {score_gap:.2f} points")
-        print(f"Expected from PHASE_12_WEIGHT_EMPIRICAL_VALIDATION.md: ~3.44 points")
+        print(f"Score Gap (mock embeddings, post BM25 fix): {score_gap:.2f} points")
         print("=" * 60)
 
-        # Additional assertion: The ranking gap should be meaningful.
-        # PHASE_12_WEIGHT_EMPIRICAL_VALIDATION.md documents the expected gap as ~3.44 points
-        # using mock L2-normalized embeddings. Threshold set at 3.0 to give 0.44-point margin
-        # for floating-point variance in the mock vector construction.
-        # NOTE: This test uses MOCK embeddings only. Real all-MiniLM-L6-v2 model results
-        # are validated separately in test_keyword_stuffer_rejection_real_embeddings.
-        assert score_gap >= 3.0, (
-            f"Expected meaningful ranking separation (>=3 points, documented ~3.44 with mock "
-            f"embeddings per PHASE_12_WEIGHT_EMPIRICAL_VALIDATION.md) between genuine frontend "
-            f"and keyword stuffer at 20% vector weight. Got gap={score_gap:.2f}"
+        # Gap threshold: under cap-based BM25 the stuffer's BM25 drops from 1.0 to ~0.08
+        # and the genuine candidate's rises from 0.0 to ~0.59, producing a much wider gap
+        # than the 3.44 measured under min-max. Threshold set at 5.0 to reflect the
+        # larger expected separation; exact value documented by the printed output above.
+        assert score_gap >= 5.0, (
+            f"Expected meaningful ranking separation (>=5 points, post BM25 fix) between "
+            f"genuine frontend and keyword stuffer at 20% vector weight. Got gap={score_gap:.2f}"
         )
     
     def test_keyword_stuffer_false_positive_at_40_percent_vector_weight(self):
@@ -374,11 +370,22 @@ class TestPhase12WeightValidation:
         # to record the real measurement. A separate bug ticket should fix BM25 normalization
         # before re-asserting correct end-to-end ranking.
 
-        # Verify vector similarity goes in the correct direction (model is working)
+        # Direction assertion (vector model): genuine candidate MUST have higher cosine sim
         assert sim_d > sim_c, (
             f"Real embedding model failure: vector similarity for genuine frontend (D={sim_d:.4f}) "
             f"should be higher than backend stuffer (C={sim_c:.4f}). "
             f"If this fails, the embedding model is not discriminating correctly."
+        )
+
+        # Composite ranking assertion (restored post BM25 fix):
+        # With cap-based BM25 normalization, the stuffer's BM25 contribution is proportional
+        # to actual keyword overlap (~0.08 normalized) rather than inflated to 1.0 by the
+        # min-max artifact. The vector signal (+0.15 cosine delta) can now influence the ranking.
+        assert candidate_d_result["final_score"] > candidate_c_result["final_score"], (
+            f"REGRESSION: Real all-MiniLM-L6-v2 embeddings — genuine frontend (D) ranked BELOW "
+            f"keyword stuffer (C) at 20% vector weight, even with BM25 fix applied. "
+            f"D={candidate_d_result['final_score']:.2f}, C={candidate_c_result['final_score']:.2f}. "
+            f"Weights require re-evaluation."
         )
 
         # Verify explanation_log contains vector_contribution (transparency requirement from Phase 11)
@@ -395,17 +402,4 @@ class TestPhase12WeightValidation:
             assert abs(manual - r["final_score"]) < 0.01, (
                 f"Candidate {label}: final_score {r['final_score']:.4f} is not numerically "
                 f"verifiable from components (manual={manual:.4f}). Transparency broken."
-            )
-
-        # Document the BM25 normalization artifact impact explicitly
-        bm25_c = candidate_c_result["bm25_score"]
-        bm25_d = candidate_d_result["bm25_score"]
-        if bm25_c == 1.0 and bm25_d == 0.0:
-            print(
-                f"\n[DOCUMENTED FINDING] BM25 normalization artifact confirmed in 2-candidate batch: "
-                f"C gets BM25=1.0 (any non-zero overlap), D gets BM25=0.0. "
-                f"This gives C a 30-point BM25 contribution vs D's 0.0, overpowering "
-                f"vector delta ({sim_d:.4f} - {sim_c:.4f} = {sim_d - sim_c:.4f}). "
-                f"Fix BM25 normalization (tracked in PHASE_12_PLAN.md) before re-asserting "
-                f"end-to-end ranking correctness in production-scale batches."
             )
