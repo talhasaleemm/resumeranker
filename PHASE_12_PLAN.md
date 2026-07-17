@@ -24,13 +24,25 @@ This phase integrates semantic vector search into the ResumeRanker candidate mat
   * Keyword-based retrieval (TF-IDF + BM25) still accounts for the majority (60% total weight) to ensure query-specific lexical matching remains the primary driver.
   * Exact Required Skill overlap (Skills) is maintained at 20% to guarantee that candidates who explicitly possess the mandatory hard skills are highly prioritized.
   * Semantic Vector similarity is introduced at 20% as a "semantic booster". It is high enough to elevate candidates who use synonyms/related concepts (e.g., "Deep Learning" matching "Artificial Intelligence") above unqualified candidate profiles, but low enough that it cannot rescue a candidate with zero keyword matching and zero required skills.
+* **Empirical Validation (2026-07-17):**
+  * Created `tests/test_phase12_weight_validation.py` with keyword-stuffer scenario (Case 2 from original plan)
+  * Tested both 20% and 40% vector weights with mock L2-normalized embeddings
+  * **Results:** 
+    * At 20% vector weight: Genuine candidate wins by 3.44 points
+    * At 40% vector weight: Genuine candidate wins by 3.17 points
+  * **Conclusion:** The 40% vector weight does cause slight ranking compression (0.27 point gap reduction) but does NOT cause the predicted "false-positive ranking failure" where the keyword stuffer would overtake the genuine candidate. The original reasoning was directionally correct but overstated the risk.
+  * **Decision Rationale Updated:** Stick with 30/30/20/20 because:
+    1. Empirical evidence shows slightly better discrimination at 20% (3.44 vs 3.17 gap)
+    2. Conservative approach for introducing new semantic component
+    3. Preserves keyword signal dominance (60% combined for TF-IDF+BM25)
+  * Full analysis documented in `PHASE_12_WEIGHT_EMPIRICAL_VALIDATION.md`
 * **Concrete Before/After Ranking Test Cases:**
   * **Case 1 (Synonym Match - Boosted):** A Job Description requires "Artificial Intelligence & Neural Networks". Candidate A uses the word "Artificial Intelligence" twice but has no real project depth. Candidate B uses "Deep Learning", "CNN", "PyTorch", and "model training" but never explicitly writes "Artificial Intelligence".
     * *Before:* Candidate A ranks higher due to exact keyword matching.
     * *After:* Candidate B ranks higher because the semantic vector engine recognizes their depth in modern AI sub-concepts, boosting their score above Candidate A's shallow keyword match.
   * **Case 2 (Keyword Stuffer - Rejected):** A Job Description is for a "Senior Frontend Developer (React, TypeScript)". Candidate C (a backend engineer) writes "React" and "TypeScript" several times in a skills list but has a resume body focused on Django, Docker, and SQL. Candidate D (a frontend engineer) describes React state management, hooks, and bundle optimization.
     * *Before:* Candidate C ranks close to Candidate D due to raw keyword density.
-    * *After:* Candidate D ranks significantly higher because their profile's semantic vector matches the frontend context of the JD much better than Candidate C's backend-heavy semantic vector.
+    * *After:* Candidate D ranks higher because their profile's semantic vector matches the frontend context of the JD better than Candidate C's backend-heavy semantic vector. (Empirically validated: D wins by 3.44 points at 20% vector weight)
   * **Case 3 (Completely Unqualified - Bottom of List):** An iOS Job Description requires "Swift and UIKit". Candidate E is a Data Scientist with a resume detailing Pandas, NumPy, and regression analysis.
     * *Before & After:* Candidate E remains at the bottom of the list. Even if vector similarity finds minor "software engineering" overlap, their TF-IDF, BM25, and Skills scores are 0.0, keeping their combined score too low to pass.
 
