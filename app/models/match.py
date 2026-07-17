@@ -39,6 +39,8 @@ class MatchResult(Base):
     tfidf_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     bm25_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     skill_overlap_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    vector_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+
 
     # Weighted composite score
     final_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
@@ -73,7 +75,12 @@ class MatchResult(Base):
             "skill_overlap_score >= 0.0 AND skill_overlap_score <= 1.0",
             name="chk_skill_overlap_score_bounds",
         ),
+        CheckConstraint(
+            "vector_score >= 0.0 AND vector_score <= 1.0",
+            name="chk_vector_score_bounds",
+        ),
     )
+
 
     def __repr__(self) -> str:
         return f"<MatchResult candidate={self.candidate_id} job={self.job_id} score={self.final_score:.3f}>"

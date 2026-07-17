@@ -10,6 +10,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import ForeignKey
 
 from app.database import Base
+from pgvector.sqlalchemy import Vector
+
 
 
 def _utcnow() -> datetime:
@@ -34,6 +36,8 @@ class Job(Base):
     preferred_skills: Mapped[list[str] | None] = mapped_column(
         ARRAY(Text), nullable=True, default=list
     )
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
+
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 

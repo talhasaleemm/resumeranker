@@ -18,6 +18,7 @@ from sqlalchemy import ForeignKey
 
 from app.database import Base
 from app.services.encryption import decrypt_text, decrypt_json
+from pgvector.sqlalchemy import Vector
 
 
 def _utcnow() -> datetime:
@@ -48,6 +49,8 @@ class Candidate(Base):
     )
     parsed_experience_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     parsed_projects_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
+
 
     # Auto-tags: e.g. ["backend", "AI/ML"]
     assigned_tags: Mapped[list[str] | None] = mapped_column(
