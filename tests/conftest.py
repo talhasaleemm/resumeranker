@@ -10,3 +10,4 @@ def configure_celery_eager():
     """
     celery_app.conf.task_always_eager = True
     celery_app.conf.task_eager_propagates = True
+    celery_app.conf.task_store_eager_result = True

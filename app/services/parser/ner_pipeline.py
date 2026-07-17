@@ -303,6 +303,8 @@ def _parse_skills_section(text: str, doc) -> list[str]:
     skills: list[str] = []
     for raw in raw_skills:
         skill = raw.strip()
+        # Strip category prefix, e.g. "Languages: Python" -> "Python"
+        skill = re.sub(r"^[A-Za-z\s]+:\s*", "", skill).strip()
         # Filter: not empty, reasonable length, not a full sentence
         if skill and 1 < len(skill) <= 60 and len(skill.split()) <= 6:
             # Remove leading/trailing non-word chars (but keep internal dots/hyphens)

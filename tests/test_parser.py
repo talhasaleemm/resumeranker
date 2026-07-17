@@ -416,6 +416,51 @@ AWS Certified Cloud Practitioner (2022)
                 f"Skill looks like a sentence ({word_count} words): '{skill}'"
             )
 
+    def test_skills_section_layouts(self):
+        """
+        Verify that skill extraction works across multiple structural layout formats:
+        - Layout 1: Pipe-separated list
+        - Layout 2: Bullet-separated list
+        - Layout 3: Standard comma-separated list on newlines with no category labels
+        """
+        # Layout 1: Pipe separated
+        pipe_text = """
+        John Doe
+        john@doe.com
+        SKILLS
+        Python | Go | SQL | Docker | Kubernetes
+        """
+        p1 = self._parse(pipe_text, "pipe.txt")
+        skills_p1 = [s.lower() for s in p1["skills"]]
+        assert sorted(skills_p1) == ["docker", "go", "kubernetes", "python", "sql"]
+
+        # Layout 2: Bullet separated
+        bullet_text = """
+        John Doe
+        john@doe.com
+        SKILLS
+        • React · TypeScript ▪ Node.js ▸ Python ► Docker
+        """
+        p2 = self._parse(bullet_text, "bullet.txt")
+        skills_p2 = [s.lower() for s in p2["skills"]]
+        assert "react" in skills_p2
+        assert "typescript" in skills_p2
+        assert "node.js" in skills_p2
+        assert "python" in skills_p2
+        assert "docker" in skills_p2
+
+        # Layout 3: Standard comma-separated, no categories
+        comma_text = """
+        John Doe
+        john@doe.com
+        SKILLS
+        Python, Go, SQL, Docker, Kubernetes
+        """
+        p3 = self._parse(comma_text, "comma.txt")
+        skills_p3 = [s.lower() for s in p3["skills"]]
+        assert sorted(skills_p3) == ["docker", "go", "kubernetes", "python", "sql"]
+
+
 
 # ---------------------------------------------------------------------------
 # Integration: print full profile (for raw terminal output in Phase 1 report)
