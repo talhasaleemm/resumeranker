@@ -390,3 +390,99 @@ eplacements*.txt) deleted from working directory after verification
   - Create Job: success
   - Run matching: success
   - Correct and non-zero matched score returned: `Final Score: 49.24` (TF-IDF: `0.231`, BM25: `1.0`, Skills: `0.0` for Aisha Raza)
+
+---
+
+## Phase 12 — Semantic Vector Search
+**Status:** [DONE] Complete
+**Date:** 2026-07-17
+
+### What was built
+
+- **pgvector integration:** `docker-compose.yml` switched from `postgres:16-alpine` to `pgvector/pgvector:pg16`. Alembic migration `fdf91f42720c` adds `CREATE EXTENSION IF NOT EXISTS vector`, `embedding vector(384)` columns to `candidates` and `jobs`, `vector_score FLOAT NOT NULL` with `chk_vector_score_bounds` check constraint to `match_results`.
+- **Embedding service:** `app/services/embedding.py` — thread-safe singleton `EmbeddingService` wrapping `sentence-transformers` `all-MiniLM-L6-v2` (384 dims). Model pre-cached in Docker image at build time (`RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"`).
+- **Ingestion pipeline:** `app/worker.py` — `ingest_candidate_task` constructs a PII-redacted professional profile string (parsed_skills + parsed_experience description bullets + parsed_projects descriptions; explicit exclusion of name, email, phone, URLs) and generates + persists the embedding vector.
+- **Job creation:** `app/api/v1/jobs.py` — `create_job` generates the job description embedding via `asyncio.to_thread` to avoid blocking the event loop.
+- **Scoring engine:** `app/services/matching/scorer.py` — `compute_cosine_similarity` helper added; `score_candidates` accepts `job_embedding` + per-candidate `embedding` fields and computes vector similarity as fourth weighted component. `explanation_log` now includes `vector_contribution` (weighted contribution in 0–100 scale) alongside existing tfidf/bm25/skill contributions.
+- **Weight rebalancing:** `app/config.py` — defaults changed from TF-IDF 40% / BM25 40% / Skills 20% to TF-IDF 30% / BM25 30% / Skills 20% / Vector 20% (provisional; see weight validation section below).
+- **API schema update:** `app/api/v1/matches.py` — `MatchWeights` Pydantic model extended with `vector: float` field; sum-to-1.0 validator now covers all four components.
+- **Dependencies:** `sentence-transformers==2.7.0`, `torch==2.2.2+cpu` (CPU-only via `--extra-index-url https://download.pytorch.org/whl/cpu`), `pgvector==0.3.1`, `numpy>=1.19.5,<2.0`.
+
+### Process violation disclosure (mandatory per project rules)
+
+A prior agent session violated the checkpoint rule: `PHASE_12_PLAN.md` was committed at 12:58, and implementation code was written across 12 files 7–9 minutes later (13:05–13:07) without waiting for explicit human approval (`"approved, proceed"`). The uncommitted changes were discovered during investigation, stashed (`git stash push -u -m "Phase 12 implementation work..."`), reviewed against the plan, verified correct, and then formally committed in atomic increments only after explicit review and approval. The technical work was verified to match the plan exactly. This incident is why the HARD CHECKPOINT RULE now appears at the top of STANDING PROJECT RULES as non-negotiable.
+
+### Migration gap — lesson learned
+
+When ORM model files (`candidate.py`, `job.py`, `match.py`) were modified to add `embedding` and `vector_score` columns, the corresponding Alembic migration was not created at the same time. The app started up and attempted to use the new columns, resulting in a `column does not exist` runtime failure. Migration `fdf91f42720c` was subsequently written to add the missing columns. The project's standing rule — "whenever you modify an ORM/model file, explicitly check whether a corresponding Alembic migration exists and is correct" — was added as a direct lesson from this failure.
+
+### NumPy/PyTorch compatibility issue — resolved
+
+PyTorch 2.2.2 is binary-incompatible with NumPy 2.x. A stale Docker image (built before the numpy constraint was added to `requirements.txt`) produced `RuntimeError: Numpy is not available — _ARRAY_API not found` in 5 of 85 tests. Fixed by pinning `numpy>=1.19.5,<2.0` and rebuilding the image.
+
+**Verified installed version:** `numpy==1.26.4` (confirmed via `docker compose exec app python -c "import numpy; print(numpy.__version__)"` → `1.26.4`). Within constraint. ✅
+
+### Scorer numpy array bug — found and fixed during verification
+
+`compute_cosine_similarity` and the embedding guard in `score_candidates` both used Python truthiness checks (`if not vec_a` / `if job_embedding and cand_embedding`). When pgvector returns database embeddings, it returns **numpy arrays** whose truthiness raises `ValueError: The truth value of an array with more than one element is ambiguous`. This caused `score_candidates_task` to fail silently for all real-database match requests (returning a failure result rather than raising to the caller). Fixed by replacing all truthiness checks with explicit `is not None` + `len()` guards in `scorer.py`.
+
+### Weight empirical re-validation — real all-MiniLM-L6-v2 results
+
+Per PHASE_12_WEIGHT_EMPIRICAL_VALIDATION.md requirement, validation was re-run with the actual model. The documented mock-embedding results (3.44-point gap) were produced with hand-crafted synthetic vectors and are not representative of real model output.
+
+**Real model output (2026-07-17, all-MiniLM-L6-v2, 384 dims):**
+
+| Metric | Value |
+|--------|-------|
+| Job vs C (backend keyword stuffer) cosine similarity | **0.4416** |
+| Job vs D (genuine frontend engineer) cosine similarity | **0.5933** |
+| Vector delta (D − C) | **+0.1517** |
+| Candidate C final score (30/30/20/20 weights) | **49.22** |
+| Candidate D final score (30/30/20/20 weights) | **43.37** |
+| Composite score gap | **−5.85 (C wins)** |
+
+**What the real numbers mean:** The vector component works correctly — `all-MiniLM-L6-v2` correctly assigns higher similarity to the genuine frontend candidate (+0.15 delta). However, in a 2-candidate batch, the BM25 min-max normalization artifact collapses to C=1.0 / D=0.0 (the documented bug from PHASE_12_PLAN.md "Observed but out of scope"), giving C a 30-point BM25 contribution that overwhelms the +0.15 vector delta (worth only +3.03 points at 20% weight).
+
+**Conclusion:** The 30/30/20/20 weight split is **still provisional**. The composite ranking fails in 2-candidate batches due to the BM25 normalization artifact, not due to incorrect weights or a failing vector model. The vector model is discriminating correctly. The weight split cannot be finalized until the BM25 normalization bug is fixed and validation is re-run on realistic-size batches (10–50 candidates).
+
+**Transparency verification:** All of the following confirmed passing in `test_keyword_stuffer_rejection_real_embeddings`:
+- `explanation_log` contains `vector_contribution` key for each candidate ✅
+- `final_score` is numerically verifiable from components: `(tfidf*0.3 + bm25*0.3 + skills*0.2 + vector*0.2) * 100` — both candidates checked OK (delta < 0.01) ✅
+
+### Known, accepted PII/security gap (carried forward, not re-litigated)
+
+Embedding text construction uses `parsed_experience` description bullets and `parsed_projects` description text directly. These fields contain free-form text that can include buried PII (colleague names, personal URLs, location details). Structural exclusion of name/email/phone does not catch this. Accepted as-is for local-development/synthetic-data context per DECISIONS.md constraint. Not mitigated in Phase 12.
+
+### Test results
+
+```
+platform linux -- Python 3.12.13, pytest-9.0.3
+collected 86 items
+
+86 passed, 10 warnings in 94.23s
+```
+
+(10 warnings are third-party deprecations in passlib, pytesseract, and starlette — none affect test correctness)
+
+### Git commits
+
+- `00eed8f` feat(phase12): update Docker infrastructure for pgvector and embeddings
+- `01f4a04` feat(phase12): add semantic vector search dependencies
+- `5ecca91` feat(phase12): add embedding columns to ORM models
+- `39b17ef` feat(phase12): add EmbeddingService for vector generation
+- `32d66fd` feat(phase12): rebalance scoring weights for vector component
+- `ba91ee8` feat(phase12): integrate vector similarity into scorer pipeline
+- `5398eeb` feat(phase12): generate candidate embeddings during ingestion
+- `134245f` feat(phase12): add embedding generation to job creation API
+- `e4b15e7` feat(phase12): update response schema and confirm buried PII risk
+- `bf93d4b` fix(phase12): add database migration and fix NumPy compatibility
+- `d3a3f64` fix(phase12): pin numpy>=1.19.5,<2.0 for dependency compatibility
+- `48b3254` fix(phase12): use len() checks in scorer to handle numpy arrays from pgvector
+- `6cc368b` fix(tests): add vector weight field to match endpoint test payloads
+- `f9d7c50` test(phase12): re-validate weights with real all-MiniLM-L6-v2 embeddings
+
+### Future work (out of scope for Phase 12)
+
+1. **BM25 normalization fix (tracked):** Fix min-max normalization strategy for small candidate batches before re-running weight validation with real embeddings on production-scale (10–50 candidate) batches.
+2. **Weight finalization:** Re-validate 30/30/20/20 split after BM25 fix. Consider 35/35/20/10 or sigmoid-normalized BM25.
+3. **PII content-scanning:** Replace structural-exclusion redaction with NER-based content scanning before any deployment with real resume data.
