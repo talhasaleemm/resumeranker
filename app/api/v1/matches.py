@@ -32,13 +32,14 @@ class MatchWeights(BaseModel):
     tfidf: float
     bm25: float
     skills: float
+    vector: float
 
     @model_validator(mode="after")
     def check_weights_sum(self) -> "MatchWeights":
-        if self.tfidf < 0 or self.bm25 < 0 or self.skills < 0:
+        if self.tfidf < 0 or self.bm25 < 0 or self.skills < 0 or self.vector < 0:
             raise ValueError("Weights cannot be negative.")
             
-        total = self.tfidf + self.bm25 + self.skills
+        total = self.tfidf + self.bm25 + self.skills + self.vector
         if not math.isclose(total, 1.0, rel_tol=1e-5):
             raise ValueError(f"Weights must sum to exactly 1.0. Got {total:.2f}")
         return self
@@ -82,6 +83,7 @@ async def match_candidates(
     task = score_candidates_task.delay(
         job_id=str(match_request.job_id),
         candidate_ids=candidate_ids_str,
+        weights=match_request.weights.model_dump() if match_request.weights else None,
     )
 
     return JSONResponse(

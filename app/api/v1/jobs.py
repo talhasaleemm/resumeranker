@@ -27,11 +27,17 @@ async def create_job(
     db: AsyncSession = Depends(get_db),
     current_user: Recruiter = Depends(get_current_active_recruiter)
 ):
+    import asyncio
+    from app.services.embedding import get_embedding_service
+    embedding_service = get_embedding_service()
+    embedding_vector = await asyncio.to_thread(embedding_service.get_embedding, job_in.description)
+
     job = Job(
         title=job_in.title,
         description=job_in.description,
         required_skills=job_in.required_skills,
         preferred_skills=job_in.preferred_skills,
+        embedding=embedding_vector,
         is_active=True,
         recruiter_id=current_user.id
     )
