@@ -66,3 +66,10 @@ Pillow==10.4.0
 # --- Authentication ---
 passlib[argon2]==1.7.4
 PyJWT==2.8.0
+
+# --- Semantic Vector Search ---
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.2.2+cpu
+sentence-transformers==2.7.0
+pgvector==0.3.1
+
