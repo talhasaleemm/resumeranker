@@ -58,4 +58,6 @@ This is not a "convenient assumption" — this is a hard boundary. Crossing it w
   - *Validation Status:* This gap has been identified and documented, but NOT mitigated. Current testing uses only clean synthetic fixtures.
   - *Phase 12 Implementation Confirmation (2026-07-17):* The as-implemented embedding text construction in `app/worker.py` uses `parsed_experience` description bullets and `parsed_projects` description text directly. These fields contain free-form text that can include buried PII. This known, accepted risk applies unchanged to the shipped construction — no content-scanning or scrubbing was added.
 
+- **BM25_SATURATION_CAP = 12.0 (Phase 12B):** The cap value used in `app/services/matching/bm25_engine.py` was calibrated against the current synthetic test corpus (7 fixture texts + 7 sample resumes × 3 job descriptions; observed max raw score: 9.65). It is not validated against production-scale or real-world resume data. This value should be revisited once real, varied resumes are processed at volume — if the observed raw score distribution shifts significantly (e.g., longer resumes or denser JDs pushing scores above 12.0), the cap will need recalibration to preserve proportional discrimination.
+
 

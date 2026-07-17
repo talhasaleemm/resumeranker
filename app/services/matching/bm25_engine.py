@@ -78,10 +78,21 @@ def compute_normalized_bm25_scores(query: str, documents: List[str]) -> List[flo
     Computes BM25 scores and normalizes them to [0.0, 1.0] using a fixed saturation cap
     so they can be combined linearly with TF-IDF, Skill overlap, and Vector similarity.
 
-    Normalization: normalized = min(raw_score / BM25_SATURATION_CAP, 1.0)
+    Normalization: normalized = max(0.0, min(raw_score / BM25_SATURATION_CAP, 1.0))
 
     This is batch-size-independent: a candidate's normalized score does not change based
     on who else is in the batch. See BM25_SATURATION_CAP for calibration details.
+
+    Note on small corpora: BM25 Okapi IDF = log((N - n + 0.5) / (n + 0.5)), where N is
+    the number of documents in the batch and n is the number containing a given term.
+    When N <= 2 and only 1 document matches a query term (n=1), IDF is negative, making
+    the raw score zero or negative after the max(0.0, ...) floor. This means BM25=0.0
+    is EXPECTED AND CORRECT for candidates in 1-2 candidate batches, even if they have
+    genuine keyword overlap. It is not a bug or regression — it is standard BM25 behavior
+    that was previously hidden by min-max inflation (which gave 1.0 to any non-zero raw
+    score in a 2-candidate batch). In production-scale batches (10-50+ candidates) IDF
+    is positive and BM25 contributes meaningfully. For single-candidate scoring, the
+    composite score is driven by TF-IDF, skills, and vector similarity instead.
     """
     raw_scores = compute_bm25_scores(query, documents)
 
