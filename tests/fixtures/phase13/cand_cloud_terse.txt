@@ -1,0 +1,1 @@
+Cloud Architect AWS Azure GCP multi-cloud hybrid architecture microservices serverless Lambda containers Kubernetes Istio service mesh networking VPC IAM zero-trust security cost optimization FinOps disaster recovery high availability scalability IaC Terraform Pulumi architecture documentation design review

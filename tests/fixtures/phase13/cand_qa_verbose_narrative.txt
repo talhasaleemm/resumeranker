@@ -1,0 +1,5 @@
+My career in quality engineering spans five years of test automation across web applications, APIs, and performance-critical systems. I specialize in building test infrastructure that integrates seamlessly into CI/CD pipelines, ensuring quality is a continuous property of the codebase rather than a gate at the end of the release cycle.
+
+On the UI side, I author Selenium, Playwright, and Cypress test suites covering cross-browser compatibility and regression scenarios. I use BDD-style Gherkin specifications to bridge communication between business stakeholders and engineering, implementing Cucumber step definitions that serve as living documentation. For accessibility, I enforce WCAG compliance through axe-core integration and manual assistive technology audits.
+
+API testing is handled through Postman collection suites and Python requests scripts, with contract testing to catch breaking changes early. Performance testing is managed with JMeter for baseline load profiling and k6 for developer-local performance regression checks. I track defect lifecycle in Jira within agile scrum workflows and maintain test coverage dashboards using static analysis tooling.

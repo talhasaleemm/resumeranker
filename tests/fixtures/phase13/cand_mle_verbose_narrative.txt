@@ -1,0 +1,5 @@
+As a Machine Learning Engineer with seven years in production AI systems, I own the complete ML lifecycle from data preprocessing and feature store design through distributed training, model optimization, and inference serving at scale.
+
+My training infrastructure runs PyTorch and TensorFlow workloads across GPU clusters using CUDA-optimized data loaders and distributed training strategies (DDP, Horovod). I perform hyperparameter tuning with Optuna and Ray Tune, and track experiments with MLflow model registry for reproducible research-to-production handoffs.
+
+Post-deployment, I instrument model monitoring pipelines that detect statistical drift and trigger automated retraining jobs. I have built quantization and pruning pipelines that reduce inference latency by 40% without meaningful accuracy loss. Real-time serving APIs are built on FastAPI with async request handling, while batch pipelines process offline scoring via scheduled Airflow DAGs. I have run A/B testing frameworks comparing model variants using statistical significance testing to guide rollout decisions.

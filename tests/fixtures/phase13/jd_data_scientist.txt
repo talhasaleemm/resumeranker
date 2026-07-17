@@ -1,0 +1,1 @@
+Data Scientist with proficiency in Python statistical modeling machine learning scikit-learn pandas NumPy data visualization matplotlib seaborn SQL feature engineering A/B testing hypothesis testing regression classification clustering model evaluation cross-validation experiment design Jupyter notebooks data pipeline ETL transformation

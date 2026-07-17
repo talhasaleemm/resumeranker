@@ -1,0 +1,5 @@
+Results-driven Data Scientist with five years of applied machine learning experience across financial services and technology sectors. I specialize in building and deploying statistical models using Python, scikit-learn, and pandas, consistently translating complex data into actionable insights.
+
+My core competency is the full modeling lifecycle: I conduct rigorous feature engineering and data preprocessing, design A/B testing frameworks and hypothesis testing protocols, and evaluate models using cross-validation, ROC-AUC, precision-recall, and regression metrics. I build classification, regression, and clustering pipelines that are reproducible via Jupyter notebooks and integrated with ETL transformation workflows.
+
+On the visualization side, I produce stakeholder-ready dashboards and exploratory analysis reports using matplotlib, seaborn, and Plotly. I query large-scale datasets with optimized SQL and interface with data engineering teams to ensure clean, reliable pipeline outputs. I have led three end-to-end model deployments covering A/B testing design through statistical significance analysis and production rollout.

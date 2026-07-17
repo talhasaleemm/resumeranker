@@ -1,0 +1,454 @@
+{
+  "schema_version": "2.0",
+  "phase": 13,
+  "data_policy": "synthetic_only",
+  "data_source_note": "All fixtures are 100% synthetic. Vocabulary is grounded in O*NET occupational task descriptions (public domain) for realism. No Kaggle datasets, no real resumes, no PII of any kind. Safe for public repository.",
+  "onet_references": {
+    "15-1252": "Software Developers",
+    "15-2051": "Data Scientists",
+    "15-1244": "Network and Computer Systems Administrators / DevOps",
+    "15-1243": "Database Administrators and Architects / Data Engineers",
+    "11-2021": "Marketing Managers / Product Managers (applied)",
+    "15-1253": "Software Quality Assurance Analysts and Testers",
+    "15-1299": "Computer Occupations, All Other / Cloud Architects",
+    "15-1212": "Information Security Analysts"
+  },
+  "style_taxonomy": {
+    "terse": "Keyword-list format, minimal prose, 15-30 non-stopword tokens. Tests that short candidate text isn't penalized by query-length normalization.",
+    "verbose_narrative": "Long-form prose paragraphs, 120-250 tokens after stopword removal. Tests that raw score accumulation doesn't inflate normalized score beyond cap.",
+    "bulleted": "Structured resume sections with bullet points, 60-130 tokens. Realistic mid-length format.",
+    "stuffer": "Keyword repetition with irrelevant actual background. Regression test: normalization must not reward raw token frequency inflation.",
+    "nomatch": "Entirely different domain. Normalized score must be near zero."
+  },
+  "job_descriptions": {
+    "jd_verbose.txt": {
+      "onet_soc": "15-1252",
+      "role_cluster": "full_stack_engineer",
+      "style": "verbose",
+      "token_count_approx": 42,
+      "purpose": "ORIGINAL — exceeds BM25_SATURATION_CAP=12.0 on dense candidates. Core calibration JD.",
+      "phase13_test_role": "verbose_jd_independence"
+    },
+    "jd_terse.txt": {
+      "onet_soc": "15-1252",
+      "role_cluster": "full_stack_engineer",
+      "style": "terse",
+      "token_count_approx": 4,
+      "purpose": "ORIGINAL — proves new normalization does not deflate short JDs vs verbose JDs.",
+      "phase13_test_role": "terse_jd_independence"
+    },
+    "jd_medium.txt": {
+      "onet_soc": "15-1252",
+      "role_cluster": "full_stack_engineer",
+      "style": "medium",
+      "token_count_approx": 10,
+      "purpose": "ORIGINAL — SCALE_FACTOR calibration anchor: perfect match must yield 0.80-0.85.",
+      "phase13_test_role": "perfect_match_saturation"
+    },
+    "jd_data_scientist.txt": {
+      "onet_soc": "15-2051",
+      "role_cluster": "data_scientist",
+      "style": "verbose",
+      "token_count_approx": 38,
+      "purpose": "NEW — O*NET 15-2051 grounded. Tests normalization on analytics/ML vocabulary domain.",
+      "phase13_test_role": "cross_domain_normalization"
+    },
+    "jd_devops_sre.txt": {
+      "onet_soc": "15-1244",
+      "role_cluster": "devops_sre",
+      "style": "verbose",
+      "token_count_approx": 36,
+      "purpose": "NEW — O*NET 15-1244 grounded. Infrastructure/reliability domain.",
+      "phase13_test_role": "cross_domain_normalization"
+    },
+    "jd_ml_engineer.txt": {
+      "onet_soc": "15-2051",
+      "role_cluster": "ml_engineer",
+      "style": "verbose",
+      "token_count_approx": 40,
+      "purpose": "NEW — O*NET 15-2051/15-1252 hybrid. Model lifecycle vocabulary.",
+      "phase13_test_role": "cross_domain_normalization"
+    },
+    "jd_data_engineer.txt": {
+      "onet_soc": "15-1243",
+      "role_cluster": "data_engineer",
+      "style": "verbose",
+      "token_count_approx": 38,
+      "purpose": "NEW — O*NET 15-1243 grounded. Pipeline/warehouse vocabulary.",
+      "phase13_test_role": "cross_domain_normalization"
+    },
+    "jd_product_manager.txt": {
+      "onet_soc": "11-2021",
+      "role_cluster": "product_manager",
+      "style": "verbose",
+      "token_count_approx": 36,
+      "purpose": "NEW — O*NET 11-2021 grounded. Non-engineering domain included intentionally.",
+      "phase13_test_role": "non_engineering_domain"
+    },
+    "jd_qa_sdet.txt": {
+      "onet_soc": "15-1253",
+      "role_cluster": "qa_sdet",
+      "style": "verbose",
+      "token_count_approx": 38,
+      "purpose": "NEW — O*NET 15-1253 grounded. QA automation and performance testing vocabulary.",
+      "phase13_test_role": "cross_domain_normalization"
+    },
+    "jd_cloud_architect.txt": {
+      "onet_soc": "15-1299",
+      "role_cluster": "cloud_architect",
+      "style": "verbose",
+      "token_count_approx": 40,
+      "purpose": "NEW — O*NET 15-1299 grounded. Infrastructure architecture vocabulary.",
+      "phase13_test_role": "cross_domain_normalization"
+    },
+    "jd_security_engineer.txt": {
+      "onet_soc": "15-1212",
+      "role_cluster": "security_engineer",
+      "style": "verbose",
+      "token_count_approx": 36,
+      "purpose": "NEW — O*NET 15-1212 grounded. AppSec/compliance vocabulary.",
+      "phase13_test_role": "cross_domain_normalization"
+    },
+    "jd_backend_terse.txt": {
+      "onet_soc": "15-1252",
+      "role_cluster": "backend_developer",
+      "style": "terse",
+      "token_count_approx": 5,
+      "purpose": "NEW — Ultra-terse (5-token) JD. Stress-tests normalization at minimum query length.",
+      "phase13_test_role": "ultra_terse_independence"
+    },
+    "jd_frontend_terse.txt": {
+      "onet_soc": "15-1252",
+      "role_cluster": "frontend_developer",
+      "style": "terse",
+      "token_count_approx": 5,
+      "purpose": "NEW — Ultra-terse frontend JD. Complementary terse-end calibration point.",
+      "phase13_test_role": "ultra_terse_independence"
+    }
+  },
+  "candidates": {
+    "candidate_dense.txt": {
+      "role_cluster": "full_stack_engineer",
+      "style": "verbose_narrative",
+      "match_tier": "strong",
+      "purpose": "ORIGINAL — strong match across all 3 original JDs. JD-length independence test anchor."
+    },
+    "candidate_sparse.txt": {
+      "role_cluster": "generic_web",
+      "style": "terse",
+      "match_tier": "weak",
+      "purpose": "ORIGINAL — minimal overlap, tests normalization produces near-zero for genuine mismatches."
+    },
+    "candidate_stuffer.txt": {
+      "role_cluster": "full_stack_engineer",
+      "style": "stuffer",
+      "match_tier": "inflated",
+      "purpose": "ORIGINAL — keyword repetition regression test from Phase 12B."
+    },
+    "candidate_perfect.txt": {
+      "role_cluster": "full_stack_engineer",
+      "style": "verbose_narrative",
+      "match_tier": "perfect_against_medium",
+      "purpose": "ORIGINAL — SCALE_FACTOR calibration: perfect match vs jd_medium must yield 0.80-0.85."
+    },
+    "cand_ds_terse.txt": {
+      "role_cluster": "data_scientist",
+      "style": "terse",
+      "match_tier": "strong",
+      "purpose": "NEW — terse match for data scientist JD. Style-independence test."
+    },
+    "cand_ds_verbose_narrative.txt": {
+      "role_cluster": "data_scientist",
+      "style": "verbose_narrative",
+      "match_tier": "strong",
+      "purpose": "NEW — verbose narrative match for data scientist JD. Tests that prose doesn't over-accumulate."
+    },
+    "cand_ds_bulleted.txt": {
+      "role_cluster": "data_scientist",
+      "style": "bulleted",
+      "match_tier": "strong",
+      "purpose": "NEW — bulleted match for data scientist JD."
+    },
+    "cand_ds_nomatch.txt": {
+      "role_cluster": "retail",
+      "style": "terse",
+      "match_tier": "zero",
+      "purpose": "NEW — zero-match for data scientist JD. Normalized score must be near 0."
+    },
+    "cand_devops_terse.txt": {
+      "role_cluster": "devops_sre",
+      "style": "terse",
+      "match_tier": "strong",
+      "purpose": "NEW — terse DevOps match. Style-independence test."
+    },
+    "cand_devops_verbose_narrative.txt": {
+      "role_cluster": "devops_sre",
+      "style": "verbose_narrative",
+      "match_tier": "strong",
+      "purpose": "NEW — verbose DevOps narrative match."
+    },
+    "cand_devops_bulleted.txt": {
+      "role_cluster": "devops_sre",
+      "style": "bulleted",
+      "match_tier": "strong",
+      "purpose": "NEW — bulleted DevOps match."
+    },
+    "cand_devops_stuffer.txt": {
+      "role_cluster": "devops_sre",
+      "style": "stuffer",
+      "match_tier": "inflated",
+      "purpose": "NEW — DevOps keyword stuffer. Normalization must not reward raw repetition."
+    },
+    "cand_mle_terse.txt": {
+      "role_cluster": "ml_engineer",
+      "style": "terse",
+      "match_tier": "strong",
+      "purpose": "NEW — terse ML engineer match."
+    },
+    "cand_mle_verbose_narrative.txt": {
+      "role_cluster": "ml_engineer",
+      "style": "verbose_narrative",
+      "match_tier": "strong",
+      "purpose": "NEW — verbose ML engineer narrative."
+    },
+    "cand_mle_bulleted.txt": {
+      "role_cluster": "ml_engineer",
+      "style": "bulleted",
+      "match_tier": "strong",
+      "purpose": "NEW — bulleted ML engineer match."
+    },
+    "cand_mle_nomatch.txt": {
+      "role_cluster": "creative",
+      "style": "terse",
+      "match_tier": "zero",
+      "purpose": "NEW — zero-match for ML engineer JD."
+    },
+    "cand_de_terse.txt": {
+      "role_cluster": "data_engineer",
+      "style": "terse",
+      "match_tier": "strong",
+      "purpose": "NEW — terse data engineer match."
+    },
+    "cand_de_verbose_narrative.txt": {
+      "role_cluster": "data_engineer",
+      "style": "verbose_narrative",
+      "match_tier": "strong",
+      "purpose": "NEW — verbose data engineer narrative."
+    },
+    "cand_de_bulleted.txt": {
+      "role_cluster": "data_engineer",
+      "style": "bulleted",
+      "match_tier": "strong",
+      "purpose": "NEW — bulleted data engineer match."
+    },
+    "cand_de_stuffer.txt": {
+      "role_cluster": "data_engineer",
+      "style": "stuffer",
+      "match_tier": "inflated",
+      "purpose": "NEW — data engineer keyword stuffer (platform names repeated, real background is Excel)."
+    },
+    "cand_pm_terse.txt": {
+      "role_cluster": "product_manager",
+      "style": "terse",
+      "match_tier": "strong",
+      "purpose": "NEW — terse product manager match."
+    },
+    "cand_pm_verbose_narrative.txt": {
+      "role_cluster": "product_manager",
+      "style": "verbose_narrative",
+      "match_tier": "strong",
+      "purpose": "NEW — verbose product manager narrative."
+    },
+    "cand_pm_bulleted.txt": {
+      "role_cluster": "product_manager",
+      "style": "bulleted",
+      "match_tier": "strong",
+      "purpose": "NEW — bulleted product manager match."
+    },
+    "cand_qa_terse.txt": {
+      "role_cluster": "qa_sdet",
+      "style": "terse",
+      "match_tier": "strong",
+      "purpose": "NEW — terse QA match."
+    },
+    "cand_qa_bulleted.txt": {
+      "role_cluster": "qa_sdet",
+      "style": "bulleted",
+      "match_tier": "strong",
+      "purpose": "NEW — bulleted QA match."
+    },
+    "cand_qa_verbose_narrative.txt": {
+      "role_cluster": "qa_sdet",
+      "style": "verbose_narrative",
+      "match_tier": "strong",
+      "purpose": "NEW — verbose QA narrative."
+    },
+    "cand_cloud_terse.txt": {
+      "role_cluster": "cloud_architect",
+      "style": "terse",
+      "match_tier": "strong",
+      "purpose": "NEW — terse cloud architect match."
+    },
+    "cand_cloud_bulleted.txt": {
+      "role_cluster": "cloud_architect",
+      "style": "bulleted",
+      "match_tier": "strong",
+      "purpose": "NEW — bulleted cloud architect match."
+    },
+    "cand_cloud_verbose_narrative.txt": {
+      "role_cluster": "cloud_architect",
+      "style": "verbose_narrative",
+      "match_tier": "strong",
+      "purpose": "NEW — verbose cloud architect narrative."
+    },
+    "cand_sec_terse.txt": {
+      "role_cluster": "security_engineer",
+      "style": "terse",
+      "match_tier": "strong",
+      "purpose": "NEW — terse security engineer match."
+    },
+    "cand_sec_bulleted.txt": {
+      "role_cluster": "security_engineer",
+      "style": "bulleted",
+      "match_tier": "strong",
+      "purpose": "NEW — bulleted security engineer match."
+    },
+    "cand_sec_verbose_narrative.txt": {
+      "role_cluster": "security_engineer",
+      "style": "verbose_narrative",
+      "match_tier": "strong",
+      "purpose": "NEW — verbose security engineer narrative."
+    },
+    "cand_sec_nomatch.txt": {
+      "role_cluster": "construction",
+      "style": "terse",
+      "match_tier": "zero",
+      "purpose": "NEW — zero-match for security engineer JD."
+    },
+    "cand_backend_strong.txt": {
+      "role_cluster": "backend_developer",
+      "style": "terse",
+      "match_tier": "strong",
+      "purpose": "NEW — perfect match for ultra-terse backend JD."
+    },
+    "cand_frontend_strong.txt": {
+      "role_cluster": "frontend_developer",
+      "style": "terse",
+      "match_tier": "strong",
+      "purpose": "NEW — perfect match for ultra-terse frontend JD."
+    },
+    "cand_terse_nomatch.txt": {
+      "role_cluster": "marketing",
+      "style": "terse",
+      "match_tier": "zero",
+      "purpose": "NEW — zero-match for ultra-terse backend and frontend JDs."
+    }
+  },
+  "pairings": [
+    {"id": 1,  "jd": "jd_verbose.txt",         "candidate": "candidate_dense.txt",           "purpose": "verbose_jd_strong_match",               "phase13_assertion": "independence_band"},
+    {"id": 2,  "jd": "jd_terse.txt",            "candidate": "candidate_dense.txt",           "purpose": "terse_jd_strong_match",                 "phase13_assertion": "independence_band"},
+    {"id": 3,  "jd": "jd_medium.txt",           "candidate": "candidate_dense.txt",           "purpose": "medium_jd_strong_match",                "phase13_assertion": "independence_band"},
+    {"id": 4,  "jd": "jd_verbose.txt",          "candidate": "candidate_sparse.txt",          "purpose": "verbose_jd_weak_match",                 "phase13_assertion": "near_zero"},
+    {"id": 5,  "jd": "jd_verbose.txt",          "candidate": "candidate_stuffer.txt",         "purpose": "original_keyword_stuffer_regression",   "phase13_assertion": "stuffer_beaten_by_dense"},
+    {"id": 6,  "jd": "jd_medium.txt",           "candidate": "candidate_perfect.txt",         "purpose": "perfect_match_saturation_calibration",  "phase13_assertion": "score_lte_0.85"},
+
+    {"id": 7,  "jd": "jd_data_scientist.txt",   "candidate": "cand_ds_terse.txt",             "purpose": "ds_terse_match",                        "phase13_assertion": "style_independence"},
+    {"id": 8,  "jd": "jd_data_scientist.txt",   "candidate": "cand_ds_verbose_narrative.txt", "purpose": "ds_verbose_narrative_match",             "phase13_assertion": "style_independence"},
+    {"id": 9,  "jd": "jd_data_scientist.txt",   "candidate": "cand_ds_bulleted.txt",          "purpose": "ds_bulleted_match",                     "phase13_assertion": "style_independence"},
+    {"id": 10, "jd": "jd_data_scientist.txt",   "candidate": "cand_ds_nomatch.txt",            "purpose": "ds_nomatch",                            "phase13_assertion": "near_zero"},
+    {"id": 11, "jd": "jd_data_scientist.txt",   "candidate": "candidate_dense.txt",           "purpose": "ds_cross_cluster_mismatch",             "phase13_assertion": "lower_than_cluster_match"},
+
+    {"id": 12, "jd": "jd_devops_sre.txt",       "candidate": "cand_devops_terse.txt",         "purpose": "devops_terse_match",                    "phase13_assertion": "style_independence"},
+    {"id": 13, "jd": "jd_devops_sre.txt",       "candidate": "cand_devops_verbose_narrative.txt", "purpose": "devops_verbose_narrative_match",    "phase13_assertion": "style_independence"},
+    {"id": 14, "jd": "jd_devops_sre.txt",       "candidate": "cand_devops_bulleted.txt",      "purpose": "devops_bulleted_match",                 "phase13_assertion": "style_independence"},
+    {"id": 15, "jd": "jd_devops_sre.txt",       "candidate": "cand_devops_stuffer.txt",       "purpose": "devops_stuffer_regression",             "phase13_assertion": "stuffer_beaten_by_strong"},
+    {"id": 16, "jd": "jd_devops_sre.txt",       "candidate": "candidate_sparse.txt",          "purpose": "devops_jd_weak_match",                  "phase13_assertion": "near_zero"},
+
+    {"id": 17, "jd": "jd_ml_engineer.txt",      "candidate": "cand_mle_terse.txt",            "purpose": "mle_terse_match",                       "phase13_assertion": "style_independence"},
+    {"id": 18, "jd": "jd_ml_engineer.txt",      "candidate": "cand_mle_verbose_narrative.txt","purpose": "mle_verbose_narrative_match",            "phase13_assertion": "style_independence"},
+    {"id": 19, "jd": "jd_ml_engineer.txt",      "candidate": "cand_mle_bulleted.txt",         "purpose": "mle_bulleted_match",                    "phase13_assertion": "style_independence"},
+    {"id": 20, "jd": "jd_ml_engineer.txt",      "candidate": "cand_mle_nomatch.txt",           "purpose": "mle_nomatch",                           "phase13_assertion": "near_zero"},
+    {"id": 21, "jd": "jd_ml_engineer.txt",      "candidate": "cand_ds_terse.txt",             "purpose": "mle_adjacent_domain_partial_match",     "phase13_assertion": "partial_overlap_moderate"},
+
+    {"id": 22, "jd": "jd_data_engineer.txt",    "candidate": "cand_de_terse.txt",             "purpose": "de_terse_match",                        "phase13_assertion": "style_independence"},
+    {"id": 23, "jd": "jd_data_engineer.txt",    "candidate": "cand_de_verbose_narrative.txt", "purpose": "de_verbose_narrative_match",             "phase13_assertion": "style_independence"},
+    {"id": 24, "jd": "jd_data_engineer.txt",    "candidate": "cand_de_bulleted.txt",          "purpose": "de_bulleted_match",                     "phase13_assertion": "style_independence"},
+    {"id": 25, "jd": "jd_data_engineer.txt",    "candidate": "cand_de_stuffer.txt",           "purpose": "de_stuffer_regression",                 "phase13_assertion": "stuffer_beaten_by_strong"},
+    {"id": 26, "jd": "jd_data_engineer.txt",    "candidate": "cand_mle_terse.txt",            "purpose": "de_adjacent_domain_partial_match",      "phase13_assertion": "partial_overlap_moderate"},
+
+    {"id": 27, "jd": "jd_product_manager.txt",  "candidate": "cand_pm_terse.txt",             "purpose": "pm_terse_match",                        "phase13_assertion": "style_independence"},
+    {"id": 28, "jd": "jd_product_manager.txt",  "candidate": "cand_pm_verbose_narrative.txt", "purpose": "pm_verbose_narrative_match",             "phase13_assertion": "style_independence"},
+    {"id": 29, "jd": "jd_product_manager.txt",  "candidate": "cand_pm_bulleted.txt",          "purpose": "pm_bulleted_match",                     "phase13_assertion": "style_independence"},
+    {"id": 30, "jd": "jd_product_manager.txt",  "candidate": "candidate_dense.txt",           "purpose": "pm_engineering_cross_mismatch",         "phase13_assertion": "lower_than_cluster_match"},
+    {"id": 31, "jd": "jd_product_manager.txt",  "candidate": "candidate_sparse.txt",          "purpose": "pm_weak_match",                         "phase13_assertion": "near_zero"},
+
+    {"id": 32, "jd": "jd_qa_sdet.txt",          "candidate": "cand_qa_terse.txt",             "purpose": "qa_terse_match",                        "phase13_assertion": "style_independence"},
+    {"id": 33, "jd": "jd_qa_sdet.txt",          "candidate": "cand_qa_bulleted.txt",          "purpose": "qa_bulleted_match",                     "phase13_assertion": "style_independence"},
+    {"id": 34, "jd": "jd_qa_sdet.txt",          "candidate": "cand_qa_verbose_narrative.txt", "purpose": "qa_verbose_narrative_match",             "phase13_assertion": "style_independence"},
+    {"id": 35, "jd": "jd_qa_sdet.txt",          "candidate": "cand_ds_nomatch.txt",           "purpose": "qa_unrelated_domain_match",             "phase13_assertion": "near_zero"},
+    {"id": 36, "jd": "jd_qa_sdet.txt",          "candidate": "candidate_dense.txt",           "purpose": "qa_partial_cluster_overlap",            "phase13_assertion": "partial_overlap_moderate"},
+
+    {"id": 37, "jd": "jd_cloud_architect.txt",  "candidate": "cand_cloud_terse.txt",          "purpose": "cloud_terse_match",                     "phase13_assertion": "style_independence"},
+    {"id": 38, "jd": "jd_cloud_architect.txt",  "candidate": "cand_cloud_bulleted.txt",       "purpose": "cloud_bulleted_match",                  "phase13_assertion": "style_independence"},
+    {"id": 39, "jd": "jd_cloud_architect.txt",  "candidate": "cand_cloud_verbose_narrative.txt", "purpose": "cloud_verbose_narrative_match",      "phase13_assertion": "style_independence"},
+    {"id": 40, "jd": "jd_cloud_architect.txt",  "candidate": "cand_devops_terse.txt",         "purpose": "cloud_adjacent_devops_partial",         "phase13_assertion": "partial_overlap_moderate"},
+    {"id": 41, "jd": "jd_cloud_architect.txt",  "candidate": "cand_sec_nomatch.txt",          "purpose": "cloud_construction_zero_match",         "phase13_assertion": "near_zero"},
+
+    {"id": 42, "jd": "jd_security_engineer.txt","candidate": "cand_sec_terse.txt",            "purpose": "sec_terse_match",                       "phase13_assertion": "style_independence"},
+    {"id": 43, "jd": "jd_security_engineer.txt","candidate": "cand_sec_bulleted.txt",         "purpose": "sec_bulleted_match",                    "phase13_assertion": "style_independence"},
+    {"id": 44, "jd": "jd_security_engineer.txt","candidate": "cand_sec_verbose_narrative.txt","purpose": "sec_verbose_narrative_match",            "phase13_assertion": "style_independence"},
+    {"id": 45, "jd": "jd_security_engineer.txt","candidate": "cand_sec_nomatch.txt",          "purpose": "sec_nomatch",                           "phase13_assertion": "near_zero"},
+
+    {"id": 46, "jd": "jd_backend_terse.txt",    "candidate": "cand_backend_strong.txt",       "purpose": "ultra_terse_jd_strong_match",           "phase13_assertion": "ultra_terse_not_deflated"},
+    {"id": 47, "jd": "jd_backend_terse.txt",    "candidate": "cand_terse_nomatch.txt",        "purpose": "ultra_terse_jd_zero_match",             "phase13_assertion": "near_zero"},
+    {"id": 48, "jd": "jd_frontend_terse.txt",   "candidate": "cand_frontend_strong.txt",      "purpose": "ultra_terse_frontend_strong_match",     "phase13_assertion": "ultra_terse_not_deflated"},
+    {"id": 49, "jd": "jd_frontend_terse.txt",   "candidate": "cand_terse_nomatch.txt",        "purpose": "ultra_terse_frontend_zero_match",       "phase13_assertion": "near_zero"}
+  ],
+  "pairing_count": 49,
+  "corpus_summary": {
+    "total_jds": 13,
+    "total_candidates": 35,
+    "total_pairings": 49,
+    "jd_style_distribution": {
+      "terse_4_tokens_or_fewer": 2,
+      "terse_5_10_tokens": 1,
+      "medium_10_20_tokens": 1,
+      "verbose_30_plus_tokens": 9
+    },
+    "candidate_style_distribution": {
+      "terse": 13,
+      "verbose_narrative": 11,
+      "bulleted": 9,
+      "stuffer": 4,
+      "zero_match": 5,
+      "mixed_original": 2
+    },
+    "role_cluster_distribution": {
+      "full_stack_engineer": 4,
+      "data_scientist": 4,
+      "devops_sre": 4,
+      "ml_engineer": 4,
+      "data_engineer": 4,
+      "product_manager": 3,
+      "qa_sdet": 3,
+      "cloud_architect": 3,
+      "security_engineer": 4,
+      "backend_developer": 2,
+      "frontend_developer": 2
+    },
+    "pairing_assertion_distribution": {
+      "independence_band": 3,
+      "style_independence": 21,
+      "stuffer_beaten_by_strong": 3,
+      "near_zero": 10,
+      "perfect_match_saturation": 1,
+      "partial_overlap_moderate": 5,
+      "lower_than_cluster_match": 3,
+      "ultra_terse_not_deflated": 2,
+      "score_lte_0.85": 1
+    }
+  },
+  "calibration_script": "scripts/calibrate_bm25.py",
+  "calibration_note": "The calibrate_bm25.py script is a STANDALONE OFFLINE tool. It must NOT be imported by pytest or included in the test suite. CI only asserts the final validation rules defined in tests/test_matching.py.",
+  "signature_change_warning": "PHASE 13 STEP 2/3 DEPENDENCY: When bm25_engine.py:compute_normalized_bm25_scores() signature is updated to accept query tokens, scorer.py line 85 MUST be updated atomically in the same commit. A partial update causes TypeError in the Celery worker path and fails all integration tests."
+}

@@ -1,0 +1,1 @@
+Security Engineer penetration testing vulnerability assessment SAST DAST OWASP threat modeling secure code review cryptography TLS OAuth OIDC SAML SIEM incident response forensics AWS Security GuardDuty compliance SOC2 ISO27001 secure SDLC DevSecOps secrets management Vault

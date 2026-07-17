@@ -1,0 +1,18 @@
+Security Engineer — 6 years
+
+Application Security:
+• Penetration testing — web application, API, and mobile assessments (OWASP Top 10, PTES methodology)
+• Vulnerability assessment — SAST (Semgrep, CodeQL), DAST (OWASP ZAP, Burp Suite), SCA (Snyk, Dependabot)
+• Threat modeling — STRIDE, PASTA frameworks applied during secure SDLC design reviews
+• Secure code review — Python, Go, TypeScript — authentication, authorization, injection, cryptography bugs
+
+Identity & Cryptography:
+• OAuth 2.0, OIDC, SAML — implementation review and architecture design
+• Cryptography — TLS/PKI certificate lifecycle, symmetric/asymmetric key management
+• Secrets management — HashiCorp Vault, AWS Secrets Manager integration and rotation policies
+
+Operations & Compliance:
+• SIEM — Splunk, AWS Security Hub — threat detection rules, alert triage, incident response
+• Forensics — log analysis, memory forensics, chain-of-custody documentation
+• Compliance — SOC2 Type II, ISO27001 audit preparation and control mapping
+• DevSecOps — security gates in CI/CD, GuardDuty, Config Rules, drift detection

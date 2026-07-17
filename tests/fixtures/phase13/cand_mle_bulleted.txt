@@ -1,0 +1,16 @@
+Machine Learning Engineer — 6 years
+
+Model Development:
+• PyTorch, TensorFlow — model training, fine-tuning, hyperparameter tuning (Optuna, Ray Tune)
+• Distributed training — DDP, multi-GPU CUDA, gradient checkpointing
+• MLflow — experiment tracking, model registry, artifact versioning
+
+Optimization & Deployment:
+• Model optimization — quantization (INT8, FP16), pruning, ONNX export
+• Inference serving — FastAPI real-time APIs, TorchServe, Triton Inference Server
+• Batch pipelines — Airflow-scheduled offline scoring pipelines
+
+ML Operations:
+• Feature store — design and maintenance (Feast, Tecton)
+• Model monitoring — drift detection, data quality alerts, automated retraining triggers
+• A/B testing — statistical significance testing for model variant rollouts

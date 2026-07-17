@@ -1,0 +1,1 @@
+Spark Kafka Airflow dbt Snowflake Spark Kafka Airflow dbt Snowflake BigQuery BigQuery BigQuery ETL ETL pipeline pipeline. Actual background: manual data entry Excel spreadsheets pivot tables VLOOKUP Power BI dashboards for sales reporting financial reconciliation bookkeeping accounts payable.

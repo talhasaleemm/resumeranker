@@ -1,0 +1,16 @@
+Data Engineer — 6 years
+
+Pipeline & Orchestration:
+• Apache Spark — large-scale batch ETL/ELT, PySpark, DataFrame API, Spark SQL
+• Apache Kafka — streaming ingestion, consumer groups, schema registry, compaction
+• Apache Airflow — DAG authoring, SLA alerts, retry policies, XCom patterns
+• dbt — transformation modeling, testing, documentation, lineage graphs
+
+Storage & Warehousing:
+• Snowflake, BigQuery, Redshift — data warehouse design, cost optimization
+• Delta Lake, Iceberg — ACID transactions, time-travel, partition pruning on S3/GCS
+
+Modeling & Quality:
+• Dimensional modeling — Kimball star schema, slowly changing dimensions
+• Data quality — schema validation, row count checks, freshness monitoring, observability
+• SQL, Python — transformation logic, scripting, tooling

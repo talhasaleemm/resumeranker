@@ -1,0 +1,16 @@
+SDET / QA Automation Engineer — 5 years
+
+Test Automation:
+• Selenium, Playwright, Cypress — E2E browser automation, cross-browser compatibility testing
+• pytest, unittest — Python unit and integration test suites, fixture management, parameterization
+• API testing — Postman, requests, contract testing with Pact
+
+Performance & Load:
+• JMeter, k6 — load testing, stress testing, performance regression baselines
+• CI/CD integration — automated performance gates in Jenkins and GitHub Actions pipelines
+
+Quality Engineering:
+• BDD — Gherkin feature files, Cucumber step definitions, living documentation
+• Accessibility testing — WCAG 2.1 AA compliance audits using axe-core and manual screen reader testing
+• Static analysis — SonarQube, coverage reporting, defect tracking in Jira
+• Agile scrum — test planning, test case authoring, regression suite triage

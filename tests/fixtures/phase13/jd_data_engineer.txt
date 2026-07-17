@@ -1,0 +1,1 @@
+Data Engineer designing scalable data infrastructure ETL ELT pipelines Apache Spark Apache Kafka Apache Airflow dbt data warehouse Snowflake BigQuery Redshift data lake Delta Lake Iceberg data modeling dimensional modeling schema design SQL Python streaming batch processing data quality lineage observability cloud storage S3 GCS partitioning optimization

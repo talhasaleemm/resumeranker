@@ -1,0 +1,5 @@
+Throughout my six years as a Site Reliability Engineer, I have built and maintained the infrastructure backbone for distributed systems serving millions of daily active users. My work spans the full reliability lifecycle: designing SLO and SLA frameworks with error budget policies, owning on-call incident response rotations, and conducting thorough post-incident forensic reviews.
+
+Infrastructure-as-code is central to my practice. I provision and manage cloud resources on AWS and GCP using Terraform and Ansible, maintaining idempotent, peer-reviewed configuration across staging and production environments. I orchestrate container workloads with Kubernetes and Helm, designing rolling deployments, horizontal pod autoscaling, and pod disruption budgets to guarantee zero-downtime releases.
+
+My observability stack consists of Prometheus for metrics collection, Grafana for dashboarding, and structured alerting pipelines that page only on actionable signals. I write automation scripts in Python and Bash to eliminate toil across networking, security hardening, and CI/CD pipeline maintenance using Jenkins and GitHub Actions.

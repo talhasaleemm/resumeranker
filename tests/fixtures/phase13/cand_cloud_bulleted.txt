@@ -1,0 +1,20 @@
+Cloud Architect — 10 years
+
+Cloud Platforms & Multi-Cloud:
+• AWS (Solutions Architect Professional), Azure (Solutions Architect Expert), GCP (Professional Architect)
+• Multi-cloud and hybrid cloud architectures — unified networking, identity federation, cost governance
+
+Architecture Patterns:
+• Microservices — service decomposition, API gateway design, inter-service contracts
+• Serverless — AWS Lambda, Azure Functions, event-driven architectures, cost modeling
+• Containers — Kubernetes cluster design, Helm chart governance, Istio service mesh, mTLS
+
+Reliability & Security:
+• Disaster recovery — RTO/RPO design, multi-region active-active and active-passive strategies
+• High availability — load balancing, auto-scaling groups, chaos engineering practices
+• Zero-trust networking — VPC segmentation, IAM least privilege, AWS Network Firewall
+
+Operations:
+• IaC — Terraform modules (enterprise-scale), Pulumi TypeScript stacks
+• FinOps — cost optimization, reserved instance planning, tagging governance
+• Architecture documentation — ADRs, C4 diagrams, design review facilitation

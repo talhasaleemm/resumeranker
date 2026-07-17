@@ -1,0 +1,1 @@
+Data Scientist Python scikit-learn pandas NumPy SQL statistical modeling machine learning A/B testing hypothesis testing regression classification clustering feature engineering data visualization matplotlib seaborn model evaluation cross-validation Jupyter notebooks ETL pipeline transformation

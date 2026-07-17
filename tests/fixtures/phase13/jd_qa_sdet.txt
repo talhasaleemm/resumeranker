@@ -1,0 +1,1 @@
+QA Engineer SDET test automation Selenium Playwright Cypress API testing Postman pytest unittest test planning test cases regression suite performance testing load testing JMeter k6 CI/CD integration test coverage code quality static analysis defect tracking Jira agile BDD Gherkin Cucumber cross-browser compatibility accessibility testing WCAG

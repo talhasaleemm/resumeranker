@@ -1,0 +1,1 @@
+Backend developer proficient in Python FastAPI PostgreSQL REST API design. Built microservices with FastAPI and PostgreSQL. Designed RESTful API schemas. Deployed Python services in production.

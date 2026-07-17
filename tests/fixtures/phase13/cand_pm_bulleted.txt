@@ -1,0 +1,16 @@
+Product Manager — 7 years
+
+Strategy & Discovery:
+• Market research, competitive analysis, customer discovery interviews
+• OKR framework — quarterly roadmap prioritization aligned to company strategy
+• Wireframing, prototyping with Figma for early-stage concept validation
+
+Delivery:
+• Agile scrum — sprint planning, backlog grooming, user story writing, acceptance criteria
+• Cross-functional collaboration — engineering, design, marketing, sales stakeholder management
+• Go-to-market planning — launch readiness, enablement, phased rollout
+
+Analytics & Measurement:
+• Product analytics — Mixpanel, Amplitude event instrumentation and funnel analysis
+• KPI tracking — activation, retention, NPS, revenue impact dashboards
+• Data-driven prioritization — A/B test interpretation, user research synthesis

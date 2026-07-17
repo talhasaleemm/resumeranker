@@ -1,0 +1,15 @@
+SRE / DevOps Engineer — 5 years
+
+Infrastructure & Automation:
+• Terraform, Ansible — IaC provisioning across AWS and GCP multi-region
+• Kubernetes, Helm — container orchestration, rolling deployments, HPA
+• Docker — image build optimization, multi-stage builds, registry management
+
+CI/CD & Automation:
+• Jenkins, GitHub Actions — pipeline authoring, artifact caching, secret management
+• Bash, Python — toil-elimination scripts, incident automation
+
+Observability & Reliability:
+• Prometheus, Grafana — metrics, dashboards, alerting with SLO/SLA error budget tracking
+• On-call incident response — P1/P2 runbooks, post-mortems, root cause analysis
+• Networking & security hardening — VPC design, IAM, Linux system hardening

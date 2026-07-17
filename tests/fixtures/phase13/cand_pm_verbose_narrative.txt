@@ -1,0 +1,5 @@
+Product Manager with nine years defining and delivering digital products at B2B SaaS companies. I am fluent across the full product lifecycle — from early customer discovery and market research through roadmap prioritization, agile delivery, and go-to-market launches.
+
+My process starts with customers. I conduct structured user research interviews and synthesize findings into opportunity-driven product specifications, writing user stories with acceptance criteria that engineering teams can execute without ambiguity. I manage backlog grooming and sprint planning ceremonies, keeping stakeholder management balanced between business priorities and engineering capacity.
+
+Strategy is driven by data: I set OKRs at the team level, track progress through KPI dashboards built in Amplitude and Mixpanel, and use competitive analysis to inform positioning. I have launched four major product features using a phased go-to-market strategy, each measured against pre-defined success metrics. I prototype concepts in Figma and collaborate with cross-functional partners in design, engineering, and marketing to align on priorities before committing resources.

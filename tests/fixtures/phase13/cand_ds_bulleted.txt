@@ -1,0 +1,13 @@
+Data Scientist — 4 years
+
+Core Skills:
+• Python (scikit-learn, pandas, NumPy, matplotlib, seaborn)
+• Machine Learning: regression, classification, clustering, model evaluation
+• Statistical Methods: A/B testing, hypothesis testing, cross-validation, feature engineering
+• Data: SQL, ETL pipeline design, data visualization, Jupyter notebooks
+
+Key Accomplishments:
+• Built churn prediction classification model (scikit-learn) reducing attrition 18%
+• Designed A/B testing framework for pricing experiments with rigorous hypothesis testing
+• Delivered statistical modeling reports using pandas, NumPy, and matplotlib visualizations
+• Automated ETL transformation pipeline processing 2M records daily
