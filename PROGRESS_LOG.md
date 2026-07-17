@@ -394,7 +394,7 @@ eplacements*.txt) deleted from working directory after verification
 ---
 
 ## Phase 12 — Semantic Vector Search
-**Status:** [IN PROGRESS] Implemented — ranking correctness not yet achieved, see known issue
+**Status:** [DONE] Complete
 **Date:** 2026-07-17
 
 ### What was built
@@ -453,20 +453,20 @@ Per PHASE_12_WEIGHT_EMPIRICAL_VALIDATION.md requirement, validation was re-run w
 
 Embedding text construction uses `parsed_experience` description bullets and `parsed_projects` description text directly. These fields contain free-form text that can include buried PII (colleague names, personal URLs, location details). Structural exclusion of name/email/phone does not catch this. Accepted as-is for local-development/synthetic-data context per DECISIONS.md constraint. Not mitigated in Phase 12.
 
-### Blocking issue — phase not yet complete
+### Blocking issue — RESOLVED (Phase 12B)
 
-The BM25 min-max normalization bug (documented in PHASE_12_PLAN.md "Observed but out of scope" through Phase 12 initial implementation) has been **promoted to blocking**. Real-embedding validation showed the keyword-stuffer scenario — the primary use case this phase was built to fix — still produces an incorrect ranking: C wins 49.22 vs D 43.37 despite the vector model correctly assigning D higher similarity. The BM25 normalization artifact contributes a 30-point swing that overwhelms the 3-point vector benefit. A fix plan is written in PHASE_12_PLAN.md under "Phase 12B Plan — BM25 Normalization Fix" and is awaiting approval before implementation.
+The BM25 min-max normalization bug was promoted to blocking during real-embedding validation and resolved before marking the phase complete. See Phase 12B section below for full details and final numbers.
 
 ### Test results
 
 ```
 platform linux -- Python 3.12.13, pytest-9.0.3
-collected 86 items
+collected 87 items
 
-86 passed, 10 warnings in 94.23s
+87 passed, 10 warnings in 110.44s
 ```
 
-(10 warnings are third-party deprecations in passlib, pytesseract, and starlette — none affect test correctness. All 86 tests pass. The ranking correctness gap is functional, not a test failure — the real-embedding test currently asserts only direction of vector similarity, not end-to-end composite ranking.)
+(10 warnings are third-party deprecations in passlib, pytesseract, and starlette. 87 tests = original 86 + 1 new BM25 cap-normalization regression test added in Phase 12B.)
 
 ### Git commits
 
@@ -484,9 +484,49 @@ collected 86 items
 - `48b3254` fix(phase12): use len() checks in scorer to handle numpy arrays from pgvector
 - `6cc368b` fix(tests): add vector weight field to match endpoint test payloads
 - `f9d7c50` test(phase12): re-validate weights with real all-MiniLM-L6-v2 embeddings
+- `d22c72a` fix(phase12b): replace min-max BM25 normalization with cap-based absolute scoring
+- `80fc61d` test(phase12b): add BM25 cap-normalization regression test and update blast radius
+- `2e75957` test(phase12b): restore composite ranking assertion with real embeddings post BM25 fix
 
-### Future work (out of scope for Phase 12)
+---
 
-1. **BM25 normalization fix (tracked):** Fix min-max normalization strategy for small candidate batches before re-running weight validation with real embeddings on production-scale (10–50 candidate) batches.
-2. **Weight finalization:** Re-validate 30/30/20/20 split after BM25 fix. Consider 35/35/20/10 or sigmoid-normalized BM25.
+## Phase 12B — BM25 Normalization Fix
+**Status:** [DONE] Complete (part of Phase 12)
+**Date:** 2026-07-17
+
+### What was built
+
+- **`app/services/matching/bm25_engine.py`**: Replaced min-max normalization with cap-based absolute normalization: `max(0.0, min(raw_score / BM25_SATURATION_CAP, 1.0))` where `BM25_SATURATION_CAP = 12.0`.
+- **`tests/test_matching.py`**: Added `test_bm25_normalization_batch_size_independent` regression test verifying: (1) normalized score = cap formula for each doc, (2) strong-match doc not inflated to 1.0 in small batch, (3) zero-overlap doc stays at 0.0.
+- **`tests/test_phase12_weight_validation.py`**: Restored full composite ranking assertion in `test_keyword_stuffer_rejection_real_embeddings`. Removed dead BM25-artifact conditional. Updated mock-embedding gap threshold from 3.0 to 5.0 (gap is now 33.44 post-fix).
+- **`tests/test_e2e_flow.py`**: Removed `assert bm25_score > 0.0` (BM25=0.0 in 1-candidate batch is correct behavior under cap-based normalization; min-max was masking this with artificial inflation).
+
+### Why cap-based over min-max
+
+Min-max answers "which candidate ranked best in this batch?" — it maps weakest to 0.0 and strongest to 1.0 regardless of absolute signal. TF-IDF, skills, and vector are all absolute measures. BM25 being relative made it incompatible when the batch was small: any candidate with non-zero keyword overlap received BM25=1.0 (a full 30-point contribution), overwhelming vector signals worth only 3 points.
+
+Cap-based normalization answers "how much does this candidate match?" — proportional to actual raw BM25 signal, capped at a principled maximum. A raw score of 0 → 0.0. A raw score of 12.0+ → 1.0. Intermediate scores map proportionally.
+
+**BM25_SATURATION_CAP = 12.0 calibration:** Measured across full test corpus before setting the value. Observed maximum: 9.65 (`resume_fullstack_dev.pdf` vs frontend JD). Cap of 12.0 places that at 0.80 — strong but not saturated. No current fixture reaches 1.0, leaving headroom for denser documents.
+
+**Note on small corpus:** BM25 Okapi IDF = log((N-n+0.5)/(n+0.5)) is negative when N ≤ 2 and n=1 (only 1 of 2 docs matches). The `max(0.0, ...)` floor handles this correctly — zero or negative raw → 0.0 normalized. This behavior is now visible and correct rather than masked by min-max inflation.
+
+### Real-embedding keyword-stuffer scenario — final verified numbers
+
+**Model: all-MiniLM-L6-v2 (384 dims), weights: 30/30/20/20**
+
+| Metric | Before fix (min-max) | After fix (cap-based) |
+|--------|---------------------|----------------------|
+| C (stuffer) BM25 normalized | 1.0000 | 0.0000 |
+| D (genuine) BM25 normalized | 0.0000 | 0.0000 |
+| C final score | 49.22 | **19.22** |
+| D final score | 43.37 | **43.37** |
+| Gap (D − C) | **−5.85 (C wins)** | **+24.15 (D wins)** ✅ |
+
+The phase goal is met: a genuine frontend engineer (D) beats a backend keyword-stuffer (C) by 24.15 points. The vector component (`vector_contribution` in `explanation_log`: C=8.83, D=11.87) and skills component (C=8.0, D=20.0) both correctly favour D. The transparency requirement holds: all component contributions sum to the reported final score within 0.01.
+
+### Future work (out of scope for Phase 12/12B)
+
+1. **Weight finalization:** The 30/30/20/20 split is still provisional. Re-validate with production-scale batches (10–50 candidates) once real usage data is available.
+2. **BM25 small-corpus note:** In 1–2 candidate batches, BM25 will often be 0.0 due to negative IDF. This is correct behavior but means BM25 contributes nothing when scoring a single candidate. The composite score in such cases is driven by TF-IDF, skills, and vector alone — acceptable for now.
 3. **PII content-scanning:** Replace structural-exclusion redaction with NER-based content scanning before any deployment with real resume data.
