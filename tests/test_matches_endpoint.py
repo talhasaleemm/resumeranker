@@ -76,7 +76,8 @@ async def test_match_endpoint_success(setup_data):
         "weights": {
             "tfidf": 0.5,
             "bm25": 0.3,
-            "skills": 0.2
+            "skills": 0.2,
+            "vector": 0.0
         }
     }
     
@@ -96,7 +97,8 @@ async def test_match_endpoint_weights_not_summing_to_1(setup_data):
         "weights": {
             "tfidf": 0.5,
             "bm25": 0.5,
-            "skills": 0.5
+            "skills": 0.5,
+            "vector": 0.0
         }
     }
     with TestClient(app) as client:
@@ -106,6 +108,7 @@ async def test_match_endpoint_weights_not_summing_to_1(setup_data):
 @pytest.mark.asyncio
 async def test_match_endpoint_missing_weight_key(setup_data):
     job_id, candidate_ids = setup_data
+    # Deliberately omit 'vector' key — still missing a required field
     payload = {
         "job_id": job_id,
         "candidate_ids": candidate_ids,
@@ -127,7 +130,8 @@ async def test_match_endpoint_negative_weight(setup_data):
         "weights": {
             "tfidf": -0.5,
             "bm25": 1.5,
-            "skills": 0.0
+            "skills": 0.0,
+            "vector": 0.0
         }
     }
     with TestClient(app) as client:

@@ -85,7 +85,8 @@ def test_full_e2e_recruiter_workflow():
                 "weights": {
                     "tfidf": 0.4,
                     "bm25": 0.4,
-                    "skills": 0.2
+                    "skills": 0.2,
+                    "vector": 0.0
                 }
             },
             headers=headers
@@ -104,11 +105,12 @@ def test_full_e2e_recruiter_workflow():
         aisha_match = matches[0]
         assert aisha_match["candidate_name"] == "Aisha Raza"
         
-        # Calculate expected final score based on components (since TF-IDF varies with corpus size)
+        # Calculate expected final score from all 4 components (vector=0.0 so no change vs Phase 11)
         tfidf_contrib = aisha_match["tfidf_score"] * 40.0
         bm25_contrib = aisha_match["bm25_score"] * 40.0
         skill_contrib = aisha_match["skill_score"] * 20.0
-        expected_final = round(tfidf_contrib + bm25_contrib + skill_contrib, 2)
+        vector_contrib = aisha_match.get("vector_score", 0.0) * 0.0  # weight=0.0
+        expected_final = round(tfidf_contrib + bm25_contrib + skill_contrib + vector_contrib, 2)
         
         assert aisha_match["final_score"] == pytest.approx(expected_final, abs=0.01)
         assert aisha_match["skill_score"] == 1.0
