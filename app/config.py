@@ -51,9 +51,10 @@ class Settings(BaseSettings):
     spacy_model: str = "en_core_web_sm"
 
     # Matching weights (must sum to 1.0)
-    tfidf_weight: float = 0.4
-    bm25_weight: float = 0.4
+    tfidf_weight: float = 0.3
+    bm25_weight: float = 0.3
     skill_weight: float = 0.2
+    vector_weight: float = 0.2
 
     # Redis / Celery
     redis_url: str = "redis://redis:6379/0"
