@@ -133,7 +133,13 @@ This phase integrates semantic vector search into the ResumeRanker candidate mat
 
 ---
 
-## Observed but out of scope
+## BLOCKING ISSUE (scope change 2026-07-17)
+
+### BM25 Min-Max Normalization Defeats Vector Search in Primary Use Case
+
+**Status change:** Promoted from "Observed but out of scope" to **blocking Phase 12 completion**. Reason: real-embedding validation (Task 5, required before finalizing the phase) showed this bug doesn't just produce inaccurate results in a narrow edge case — it completely cancels the benefit of the vector component in the keyword-stuffer scenario that is the *primary stated purpose of Phase 12*. A backend keyword-stuffer beat a genuine frontend candidate by 5.85 points despite the vector model correctly assigning the genuine candidate higher similarity (+0.15 cosine delta). The phase goal (vector search stops keyword stuffers from winning) is not met.
+
+---
 
 ### BM25 Min-Max Normalization Artifact in Small Candidate Batches
 **Issue:** The BM25 scoring engine uses min-max normalization to bound scores between 0.0 and 1.0. In small candidate batches (2-3 candidates), this normalization can produce artificially inflated scores for candidates with even minimal keyword overlap.
@@ -165,3 +171,85 @@ This phase integrates semantic vector search into the ResumeRanker candidate mat
 - Observed during Phase 12 weight validation testing
 - Test case: `tests/test_phase12_weight_validation.py::test_keyword_stuffer_rejection_at_20_percent_vector_weight`
 - Current BM25 implementation: `app/services/matching/bm25_engine.py::compute_normalized_bm25_scores`
+
+---
+
+## Phase 12B Plan — BM25 Normalization Fix
+
+**Date written:** 2026-07-17  
+**Status:** AWAITING APPROVAL — do not implement until "approved, proceed" is received.
+
+### Problem statement
+
+Min-max normalization is relative: it maps the worst score in a batch to 0.0 and the best to 1.0, regardless of their absolute quality. This means every batch reshuffles the same 0–1 range no matter how strong or weak the actual BM25 signal is. In a 2-candidate batch:
+
+- Candidate with any non-zero BM25 raw score → gets BM25=1.0 (full 30-point contribution)
+- Candidate with zero BM25 raw score → gets BM25=0.0
+
+The keyword-stuffer had a BM25 raw score of ~4.5 vs the genuine candidate's 0.0. Under min-max that becomes 1.0 vs 0.0 — a 30-point swing. The vector delta (0.5933 − 0.4416 = +0.1517 cosine) is only worth 3.03 points at 20% weight. The vector feature cannot overcome a 30-point artifact.
+
+This is not a small-batch edge case. It is the direct consequence of choosing a normalization scheme that measures only relative rank within a batch, not absolute signal strength. The same distortion happens whenever any two candidates have very different raw BM25 scores — one ends up at 1.0 and one at 0.0 regardless of how strong or weak the overlap actually was.
+
+### Why min-max is the wrong scheme here
+
+Min-max normalization answers the question "which candidate ranked best in this batch?" It does not answer "how much does this candidate actually match the job description?" These are different questions. The scorer needs the latter — an absolute BM25 signal — so that the BM25 contribution is proportional to actual keyword overlap, not just relative position. Min-max was chosen in Phase 2 to keep scores in [0,1], but it trades absolute signal for relative rank, which is incompatible with combining BM25 with other absolute-signal components (TF-IDF uses cosine similarity, an absolute measure; skills uses Jaccard overlap, an absolute measure; vector uses cosine similarity, an absolute measure).
+
+### Proposed fix: BM25 score capping via a fixed saturation curve
+
+The fix must:
+1. **Be batch-size-independent** — removing the root cause, not patching the symptom.
+2. **Preserve the zero-point** — a candidate with zero BM25 raw score should still get 0.0.
+3. **Produce comparable values across batches** — a score of 0.6 should mean roughly the same thing whether the batch has 2 or 50 candidates.
+4. **Not require retuning of the existing weights** — the fix should produce values in [0,1] that are compatible with the current 30/30/20/20 structure.
+
+**Chosen approach: score capping (divide by a fixed maximum)**
+
+```
+normalized_score = min(raw_score / BM25_SATURATION_CAP, 1.0)
+```
+
+`BM25_SATURATION_CAP` is a fixed constant representing "a very good BM25 match." Any raw score at or above the cap maps to 1.0; scores below it map proportionally. This is simpler and more predictable than sigmoid (which requires tuning a midpoint and slope) and more informative than z-score (which requires corpus statistics).
+
+**How to set the cap:** BM25 raw scores depend on document length and vocabulary. In practice, `rank_bm25` with Okapi BM25 (k1=1.5, b=0.75 defaults) produces raw scores in roughly the 0–20 range for job description vs resume matching. A cap of **12.0** is proposed as a starting point (equivalent to saying: a raw score of 12 or above is a "saturated match"). This must be validated empirically during implementation by:
+
+1. Running `compute_bm25_scores` (not the normalized version) against a representative sample of 5–10 job/candidate pairs from the existing test fixtures.
+2. Inspecting the raw score distribution.
+3. Setting `BM25_SATURATION_CAP` to approximately the 90th percentile of raw scores for genuinely matching pairs — so a strong match approaches 1.0 and a weak match stays proportionally low.
+
+`BM25_SATURATION_CAP` must be stored as a named constant in `bm25_engine.py` (not a magic number inline) and documented with the calibration rationale.
+
+### Implementation scope
+
+**Files to modify:**
+
+1. **`app/services/matching/bm25_engine.py`**
+   - Add `BM25_SATURATION_CAP: float = 12.0` constant (value to be confirmed empirically during calibration step above).
+   - Replace the min-max normalization in `compute_normalized_bm25_scores` with cap-based normalization: `min(score / BM25_SATURATION_CAP, 1.0)`.
+   - The zero fallback (`max_score == min_score` branch) is no longer needed and should be removed.
+   - Add a docstring explaining the cap value, how it was calibrated, and why min-max was replaced.
+
+2. **`tests/test_matching.py`**
+   - Update any existing BM25 normalization tests that assert specific normalized values under the old min-max scheme.
+   - Add a new test `test_bm25_normalization_batch_size_independent`: scores 2-candidate and 10-candidate batches using the same candidate texts and asserts that a given candidate's normalized score does not change based on who else is in the batch (within a small tolerance).
+
+3. **`tests/test_phase12_weight_validation.py`**
+   - Re-run `test_keyword_stuffer_rejection_real_embeddings` with real embeddings and update the assertion from "direction only" to "D beats C" once the fix is confirmed to produce correct ranking.
+   - Update the printed gap figures.
+
+**Files NOT to modify:**
+- `app/config.py` (weights unchanged — re-evaluate the 30/30/20/20 split after seeing real-embedding results post-fix)
+- Any other scoring, API, or migration files
+
+### Verification criteria (must all be true before closing Phase 12)
+
+1. `test_bm25_normalization_batch_size_independent` passes — same candidate gets same normalized score regardless of batch composition.
+2. `test_keyword_stuffer_rejection_real_embeddings` passes with direction assertion restored: genuine frontend (D) beats backend stuffer (C) with real `all-MiniLM-L6-v2` embeddings at 30/30/20/20 weights.
+3. All 86 existing tests continue to pass.
+4. The actual gap (D score − C score) with real embeddings is reported with full component breakdown.
+5. If the gap is positive but very small (< 2 points), flag that the weights may still need revisiting even with the normalization fix.
+
+### What this does NOT fix
+
+- The 30/30/20/20 weight split is still provisional. The fix removes the normalization artifact so the weights can be evaluated fairly, but does not guarantee the current split is optimal.
+- The BM25 component will likely produce lower normalized scores overall compared to min-max (since min-max always fills the 0–1 range). This may shift the overall final score distribution downward slightly. This is expected and correct — it reflects actual signal, not relative rank.
+- PII content-scanning gap, migration gap lesson — unchanged, carried forward.

@@ -394,7 +394,7 @@ eplacements*.txt) deleted from working directory after verification
 ---
 
 ## Phase 12 — Semantic Vector Search
-**Status:** [DONE] Complete
+**Status:** [IN PROGRESS] Implemented — ranking correctness not yet achieved, see known issue
 **Date:** 2026-07-17
 
 ### What was built
@@ -453,6 +453,10 @@ Per PHASE_12_WEIGHT_EMPIRICAL_VALIDATION.md requirement, validation was re-run w
 
 Embedding text construction uses `parsed_experience` description bullets and `parsed_projects` description text directly. These fields contain free-form text that can include buried PII (colleague names, personal URLs, location details). Structural exclusion of name/email/phone does not catch this. Accepted as-is for local-development/synthetic-data context per DECISIONS.md constraint. Not mitigated in Phase 12.
 
+### Blocking issue — phase not yet complete
+
+The BM25 min-max normalization bug (documented in PHASE_12_PLAN.md "Observed but out of scope" through Phase 12 initial implementation) has been **promoted to blocking**. Real-embedding validation showed the keyword-stuffer scenario — the primary use case this phase was built to fix — still produces an incorrect ranking: C wins 49.22 vs D 43.37 despite the vector model correctly assigning D higher similarity. The BM25 normalization artifact contributes a 30-point swing that overwhelms the 3-point vector benefit. A fix plan is written in PHASE_12_PLAN.md under "Phase 12B Plan — BM25 Normalization Fix" and is awaiting approval before implementation.
+
 ### Test results
 
 ```
@@ -462,7 +466,7 @@ collected 86 items
 86 passed, 10 warnings in 94.23s
 ```
 
-(10 warnings are third-party deprecations in passlib, pytesseract, and starlette — none affect test correctness)
+(10 warnings are third-party deprecations in passlib, pytesseract, and starlette — none affect test correctness. All 86 tests pass. The ranking correctness gap is functional, not a test failure — the real-embedding test currently asserts only direction of vector similarity, not end-to-end composite ranking.)
 
 ### Git commits
 
