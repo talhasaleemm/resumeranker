@@ -29,10 +29,24 @@ def compute_skill_overlap(job_skills: List[str], candidate_skills: List[str]) ->
     return len(overlap) / len(norm_job_skills)
 
 
+def compute_cosine_similarity(vec_a: List[float], vec_b: List[float]) -> float:
+    """
+    Computes cosine similarity between two vectors.
+    Since SentenceTransformer vectors are L2-normalized, this is equivalent
+    to the dot product. Shipped/clipped to [0.0, 1.0].
+    """
+    if not vec_a or not vec_b:
+        return 0.0
+    dot_product = sum(x * y for x, y in zip(vec_a, vec_b))
+    return max(0.0, min(1.0, dot_product))
+
+
 def score_candidates(
     job_description: str,
     job_required_skills: List[str],
-    candidates: List[Dict[str, Any]]
+    candidates: List[Dict[str, Any]],
+    job_embedding: List[float] = None,
+    weights: Dict[str, float] = None
 ) -> List[Dict[str, Any]]:
     """
     Main matching pipeline.
@@ -41,9 +55,9 @@ def score_candidates(
         - id: str/UUID
         - raw_text: str (for tfidf/bm25)
         - skills: List[str] (for exact skill match)
+        - embedding: List[float] (optional, for vector similarity)
         
-    # TODO(scale): Implement pgvector or Qdrant for semantic similarity searching 
-    # instead of doing purely in-memory TF-IDF and BM25 on the fly here.
+    # TODO(scale): Transition from in-memory sparse matrices to a dedicated vector database (e.g., pgvector, Milvus) for scalability
         
     Returns a list of dicts containing the match_result for each candidate.
     """
@@ -51,6 +65,12 @@ def score_candidates(
     
     if not candidates:
         return []
+
+    # Resolve active weights
+    w_tfidf = weights.get("tfidf", settings.tfidf_weight) if weights else settings.tfidf_weight
+    w_bm25 = weights.get("bm25", settings.bm25_weight) if weights else settings.bm25_weight
+    w_skills = weights.get("skills", settings.skill_weight) if weights else settings.skill_weight
+    w_vector = weights.get("vector", settings.vector_weight) if weights else settings.vector_weight
 
     # Prepare corpus
     candidate_texts = [c.get("raw_text", "") for c in candidates]
@@ -66,23 +86,29 @@ def score_candidates(
     for i, candidate in enumerate(candidates):
         cand_id = candidate.get("id")
         cand_skills = candidate.get("skills", [])
+        cand_embedding = candidate.get("embedding", None)
         
         # 3. Compute Skill Overlap
         skill_score = compute_skill_overlap(job_required_skills, cand_skills)
         
+        # 4. Compute Vector Similarity (Cosine Similarity)
+        vec_score = 0.0
+        if job_embedding and cand_embedding:
+            vec_score = compute_cosine_similarity(job_embedding, cand_embedding)
+            
         tf_score = tfidf_scores[i]
         bm_score = bm25_scores[i]
         
         # Weighted Final Score (0.0 - 1.0)
         raw_final = (
-            (tf_score * settings.tfidf_weight) +
-            (bm_score * settings.bm25_weight) +
-            (skill_score * settings.skill_weight)
+            (tf_score * w_tfidf) +
+            (bm_score * w_bm25) +
+            (skill_score * w_skills) +
+            (vec_score * w_vector)
         )
         
         # Ensure it sums to exactly 0-100 cleanly
-        # If total weights in settings don't sum to 1.0, this handles it proportionally
-        total_weight = settings.tfidf_weight + settings.bm25_weight + settings.skill_weight
+        total_weight = w_tfidf + w_bm25 + w_skills + w_vector
         if total_weight > 0:
             raw_final = raw_final / total_weight
             
@@ -108,9 +134,10 @@ def score_candidates(
         assigned_tags, tag_evidence = assign_tags(candidate)
         
         explanation = {
-            "tfidf_contribution": round(tf_score * settings.tfidf_weight * 100, 2),
-            "bm25_contribution": round(bm_score * settings.bm25_weight * 100, 2),
-            "skill_contribution": round(skill_score * settings.skill_weight * 100, 2),
+            "tfidf_contribution": round(tf_score * w_tfidf * 100, 2),
+            "bm25_contribution": round(bm_score * w_bm25 * 100, 2),
+            "skill_contribution": round(skill_score * w_skills * 100, 2),
+            "vector_contribution": round(vec_score * w_vector * 100, 2),
             "matched_skills": matched_skills,
             "missing_skills": missing_skills,
             "tags_detected": assigned_tags,
@@ -122,6 +149,7 @@ def score_candidates(
             "tfidf_score": tf_score,
             "bm25_score": bm_score,
             "skill_score": skill_score,
+            "vector_score": vec_score,
             "final_score": final_score_100,
             "explanation_log": explanation
         })
