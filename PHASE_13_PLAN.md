@@ -302,6 +302,36 @@ Every existing test that asserts a specific BM25 or final_score value, plus ever
 
 `test_parser.py`, `test_persistence.py`, `test_auth.py`, `test_authorization.py`, `test_api_resumes.py`, `test_api_jobs.py`, `test_ocr.py`, `test_tagger.py`, `test_rate_limiting.py` — none of these touch BM25 or composite scoring. Zero blast radius.
 
+---
+
+### Worker-path analysis (Celery `score_candidates_task`)
+
+Phase 9 routed all match scoring through a Celery task. `conftest.py` sets `celery_app.conf.task_always_eager = True` (session-scoped, autouse), which means `score_candidates_task` executes synchronously in-process during every test run. The call chain is:
+
+```
+POST /api/v1/matches/  →  matches.py route handler
+  →  score_candidates_task.delay(...)  [runs in-process, eagerly]
+    →  app/worker.py: score_candidates_task()
+      →  score_candidates()  (scorer.py)
+        →  compute_normalized_bm25_scores()  (bm25_engine.py)
+```
+
+Every test that posts to `/api/v1/matches/` therefore exercises `bm25_engine.py` live, even if it only asserts on the HTTP status code. The worker also persists `MatchResult` rows to the database with `bm25_score` as a stored column, so normalization changes affect the persisted record too.
+
+**Worker-path test inventory and blast radius:**
+
+| Test | File | Polls task result? | Asserts on bm25/final_score? | Blast radius |
+|------|------|--------------------|------------------------------|--------------|
+| `test_full_e2e_recruiter_workflow` | `test_e2e_flow.py` | Yes — polls match task and reads `matches[]` | `final_score == pytest.approx(runtime-computed, abs=0.01)`, `skill_score == 1.0`, `tfidf_score > 0.0`, `final_score > 0.0` | **Low** — `final_score` expected value is computed from component scores at runtime, not hardcoded. `bm25_score` is used in the computation but not independently asserted. Safe under any normalization change that preserves `final_score = (tf*w + bm*w + sk*w + vec*w) * 100`. |
+| `test_match_endpoint_success` | `test_matches_endpoint.py` | No — asserts `202` + `task_id` only | None | None — worker executes but output not checked |
+| Persistence tests (2 calls to `/api/v1/matches/`) | `test_persistence.py` | No — asserts `202` status only | None | None |
+| `test_authorization.py` match attempt | `test_authorization.py` | No — asserts `403` (auth check fires before worker) | None | None |
+| Rate-limit tests | `test_rate_limiting.py` | No — asserts `429` | None | None |
+
+**`MatchResult` DB column:** `worker.py` persists `bm25_score=r["bm25_score"]` into the `match_results` table. The ORM model has a `chk_bm25_score_bounds` check constraint (`0.0 ≤ bm25_score ≤ 1.0`). Any normalization change must continue to produce values in `[0.0, 1.0]` — both Candidate A (global cap) and Candidate B (length-aware) guarantee this by construction (`max(0.0, min(..., 1.0))`). No migration is needed unless the column type or constraint changes. No migration is planned in this phase.
+
+**Net conclusion for worker path:** The existing blast radius catalog did not explicitly trace this path. After doing so: no test was missed in the "will break" category. `test_full_e2e_recruiter_workflow` is the only worker-path test that asserts on scoring output, and it uses runtime-computed expected values rather than hardcoded floats. It was already listed in the catalog; its worker-path nature is now explicitly documented here. The new tests added in this phase (`test_bm25_jd_length_independence`, `test_bm25_tier_discrimination`, `test_bm25_k1_b_explicit`) exercise `bm25_engine.py` directly and do not go through the worker — this is intentional, as unit-level calibration tests should not depend on the DB/Celery stack.
+
 
 ---
 
