@@ -74,12 +74,14 @@ class Candidate(Base):
     __table_args__ = (
         Index(
             "ix_candidate_email_unique",
+            "recruiter_id",
             "email_hash",
             unique=True,
             postgresql_where=email_hash.isnot(None),
         ),
         Index(
             "ix_candidate_hash_unique",
+            "recruiter_id",
             "raw_text_hash",
             unique=True,
             postgresql_where=raw_text_hash.isnot(None),

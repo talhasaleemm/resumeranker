@@ -10,7 +10,11 @@ from app.services.auth_service import get_current_active_recruiter
 async def override_get_current_active_recruiter():
     return Recruiter(id=uuid.UUID('00000000-0000-0000-0000-000000000000'), email="test@test.com", is_active=True)
 
-app.dependency_overrides[get_current_active_recruiter] = override_get_current_active_recruiter
+@pytest.fixture(autouse=True)
+def setup_overrides():
+    app.dependency_overrides[get_current_active_recruiter] = override_get_current_active_recruiter
+    yield
+    app.dependency_overrides.clear()
 
 def test_job_create_description_too_short():
     """

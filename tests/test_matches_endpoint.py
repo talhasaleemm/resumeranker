@@ -15,24 +15,30 @@ from app.services.auth_service import get_current_active_recruiter
 # Disable rate limiter for test client
 app.state.limiter.enabled = False
 
-# Override get_db to use NullPool to prevent event loop issues across TestClient requests
-settings = get_settings()
-test_engine = create_async_engine(settings.database_url, poolclass=NullPool)
-TestingSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
-
 async def override_get_db():
+    settings = get_settings()
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    TestingSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=engine)
     async with TestingSessionLocal() as session:
         yield session
         await session.commit()
+    await engine.dispose()
 
 async def override_get_current_active_recruiter():
     return Recruiter(id=uuid.UUID('00000000-0000-0000-0000-000000000000'), email="test@test.com", is_active=True)
 
-app.dependency_overrides[get_db] = override_get_db
-app.dependency_overrides[get_current_active_recruiter] = override_get_current_active_recruiter
+@pytest.fixture(autouse=True)
+def setup_overrides():
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_active_recruiter] = override_get_current_active_recruiter
+    yield
+    app.dependency_overrides.clear()
 
 @pytest.fixture
 async def setup_data():
+    settings = get_settings()
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    TestingSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=engine)
     async with TestingSessionLocal() as session:
         # Get the recruiter_id from the dependency override
         recruiter = await override_get_current_active_recruiter()
@@ -56,7 +62,9 @@ async def setup_data():
         job_id = str(job.id)
         await session.commit()
         
-        return job_id, [cand1_id, cand2_id]
+        ret_val = job_id, [cand1_id, cand2_id]
+    await engine.dispose()
+    return ret_val
 
 @pytest.mark.asyncio
 async def test_match_endpoint_success(setup_data):

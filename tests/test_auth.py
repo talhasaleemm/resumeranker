@@ -7,15 +7,19 @@ from app.config import get_settings
 from app.database import get_db
 from app.main import app
 
-settings = get_settings()
-test_engine = create_async_engine(settings.database_url, poolclass=NullPool)
-TestingSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
-
 async def override_get_db():
+    settings = get_settings()
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    TestingSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=engine)
     async with TestingSessionLocal() as session:
         yield session
+    await engine.dispose()
 
-app.dependency_overrides[get_db] = override_get_db
+@pytest.fixture(autouse=True)
+def setup_db_override():
+    app.dependency_overrides[get_db] = override_get_db
+    yield
+    app.dependency_overrides.clear()
 
 def test_register_recruiter():
     app.state.limiter.enabled = False

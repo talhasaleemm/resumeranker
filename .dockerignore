@@ -1,0 +1,11 @@
+.env
+.git
+.github
+frontend/node_modules
+frontend/.next
+frontend/out
+venv
+__pycache__
+*.pyc
+data/
+test_data/

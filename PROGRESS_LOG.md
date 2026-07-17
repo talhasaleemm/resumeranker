@@ -366,3 +366,27 @@ eplacements*.txt) deleted from working directory after verification
   - Visual loading state ("AI Analyzing Candidates...") with task ID display
   - Results leaderboard ranked by `final_score`, showing TF-IDF/BM25/Skills breakdown, matched/missing skills badges, and candidate PII (name/email)
 - The frontend strictly consumes JSON-safe primitives when submitting to Celery tasks, matching the backend contract established in Phase 9.
+
+---
+
+## Phase 11 -- Recruiter Authentication, Authorization & Security Hardening
+**Status:** [DONE] Complete  
+**Date:** 2026-07-17
+### What was built
+- **Recruiter Registration & Login:** Created `POST /api/v1/auth/register` and `POST /api/v1/auth/login` using FastAPI OAuth2 password flow. Password hashing uses `argon2` directly (via `passlib[argon2]`).
+- **Data Isolation:** Scoped `Job` and `Candidate` models to a `recruiter_id`. Backfilled database to bind existing rows to a system recruiter row. Candidate deduplication indexes (`ix_candidate_email_unique` and `ix_candidate_hash_unique`) updated to be recruiter-scoped `(recruiter_id, email_hash)` and `(recruiter_id, raw_text_hash)` to preserve tenant isolation.
+- **JWT Secret Key Validation:** Hardened `config.py` to fail fast on startup if `JWT_SECRET_KEY` is not provided in the environment.
+- **Non-Loginable System Recruiter:** Configured the default migration recruiter to have `hashed_password` = `!` and `is_active` = `False`.
+- **Eager Task Execution & Cleanups:** Fixed event loop mismatch issues in pytest-asyncio and stabilized db tests by cleaning up dependency overrides per test fixture. Set Celery to eager execution for test runs to avoid async DB races.
+### Evidence
+- **All 81 tests passing successfully in docker container:**
+```
+================= 81 passed, 10 warnings in 101.54s (0:01:41) ==================
+```
+- **Manual End-to-End Match Result Verification:**
+  - Register recruiter: success
+  - Login recruiter: success, token retrieved
+  - Upload candidate: success
+  - Create Job: success
+  - Run matching: success
+  - Correct and non-zero matched score returned: `Final Score: 49.24` (TF-IDF: `0.231`, BM25: `1.0`, Skills: `0.0` for Aisha Raza)

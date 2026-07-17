@@ -137,48 +137,51 @@ async def test_match_results_append_only_in_db():
     from app.services.auth_service import get_current_active_recruiter
     app.dependency_overrides[get_current_active_recruiter] = override_get_current_active_recruiter
     
-    # 1. Ingest candidate via Python API directly
-    from app.services.candidate_service import ingest_candidate
+    try:
+        # 1. Ingest candidate via Python API directly
+        from app.services.candidate_service import ingest_candidate
 
-    import uuid
-    unique_text = f"I am a persistent developer. {uuid.uuid4()}"
-    async with TestingSessionLocal() as db:
-        c = await ingest_candidate(db, raw_text=unique_text, filename="cand_persist.pdf", recruiter_id="00000000-0000-0000-0000-000000000000")
-        await db.commit()
-        await db.refresh(c)
-        cand_id = str(c.id)
+        import uuid
+        unique_text = f"I am a persistent developer. {uuid.uuid4()}"
+        async with TestingSessionLocal() as db:
+            c = await ingest_candidate(db, raw_text=unique_text, filename="cand_persist.pdf", recruiter_id="00000000-0000-0000-0000-000000000000")
+            await db.commit()
+            await db.refresh(c)
+            cand_id = str(c.id)
 
-    with TestClient(app) as client:
-        res_job = client.post("/api/v1/jobs/", json={
-            "title": "Persistent Developer",
-            "description": "We need a persistent developer.",
-            "required_skills": [],
-            "preferred_skills": []
-        })
-        job_id = res_job.json()["job_id"]
+        with TestClient(app) as client:
+            res_job = client.post("/api/v1/jobs/", json={
+                "title": "Persistent Developer",
+                "description": "We need a persistent developer.",
+                "required_skills": [],
+                "preferred_skills": []
+            })
+            job_id = res_job.json()["job_id"]
 
-        # Call match endpoint first time
-        payload = {"job_id": job_id, "candidate_ids": [cand_id]}
-        res1 = client.post("/api/v1/matches/", json=payload)
-        assert res1.status_code == 202
+            # Call match endpoint first time
+            payload = {"job_id": job_id, "candidate_ids": [cand_id]}
+            res1 = client.post("/api/v1/matches/", json=payload)
+            assert res1.status_code == 202
 
-        # Call match endpoint second time
-        res2 = client.post("/api/v1/matches/", json=payload)
-        assert res2.status_code == 202
+            # Call match endpoint second time
+            res2 = client.post("/api/v1/matches/", json=payload)
+            assert res2.status_code == 202
 
-    # Check DB
-    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-    from app.config import get_settings
-    
-    test_engine = create_async_engine(get_settings().database_url)
-    async with AsyncSession(test_engine) as db:
-        stmt = select(MatchResult).where(MatchResult.job_id == job_id, MatchResult.candidate_id == cand_id)
-        res = await db.execute(stmt)
-        results = res.scalars().all()
+        # Check DB
+        from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+        from app.config import get_settings
+        
+        test_engine = create_async_engine(get_settings().database_url)
+        async with AsyncSession(test_engine) as db:
+            stmt = select(MatchResult).where(MatchResult.job_id == job_id, MatchResult.candidate_id == cand_id)
+            res = await db.execute(stmt)
+            results = res.scalars().all()
 
-        assert len(results) == 1, "Expected exactly 1 match result due to ON CONFLICT DO UPDATE"
-    await test_engine.dispose()
-    app.dependency_overrides.clear()
+            assert len(results) == 2
+            assert results[0].id != results[1].id
+        await test_engine.dispose()
+    finally:
+        app.dependency_overrides.clear()
 
 async def test_ciphertext_at_rest():
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
