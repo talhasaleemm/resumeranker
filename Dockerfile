@@ -53,6 +53,9 @@ RUN python -m spacy download ${SPACY_MODEL}
 RUN useradd -m -u 1001 appuser && chown -R appuser:appuser /app
 USER appuser
 
+# Pre-download and cache sentence-transformers model
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+
 EXPOSE 8000
 
 # Default command (overridden by docker-compose for dev with --reload)
