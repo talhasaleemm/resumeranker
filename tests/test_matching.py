@@ -86,6 +86,87 @@ class TestEngines:
         # Therefore, Doc 2 must score significantly higher.
         assert scores[1] > scores[0], "Standard stopwords should allow meaningful difference"
 
+    def test_bm25_normalization_batch_size_independent(self):
+        """
+        Regression test for the min-max normalization artifact (Phase 12B fix).
+
+        Under the old min-max scheme, a candidate's normalized BM25 score depended on
+        who else was in the batch: the weakest always got 0.0 and the strongest always
+        got 1.0, regardless of absolute signal strength. In a 2-candidate batch, any
+        candidate with non-zero overlap got 1.0 by default — even a weak keyword-stuffer.
+
+        Under cap-based normalization (normalized = max(0, min(raw/CAP, 1.0))),
+        the normalized score is a deterministic function of the raw score alone.
+
+        Note: BM25 raw scores are corpus-dependent (IDF shifts with batch composition),
+        so the same text can produce different raw scores in different batches. This test
+        does not assert raw-score stability (that is a property of BM25 itself, not the
+        normalization scheme). It asserts that:
+        1. normalized = max(0, min(raw/CAP, 1.0)) for every score in the batch.
+        2. A candidate with strong overlap does NOT receive 1.0 when paired only with a
+           zero-overlap candidate (the specific inflation the old min-max scheme caused).
+        3. A zero-overlap candidate receives 0.0.
+        4. A strong-match candidate scores proportionally above zero.
+        """
+        from app.services.matching.bm25_engine import (
+            compute_bm25_scores,
+            compute_normalized_bm25_scores,
+            BM25_SATURATION_CAP,
+        )
+
+        # Use a query/corpus with clear positive vs zero overlap.
+        # BM25 IDF is positive only when the matching doc is in a minority:
+        # with N docs and n=1 matching, IDF = log((N-n+0.5)/(n+0.5)) > 0 iff N >= 3.
+        # We use 3 docs (1 strong match + 2 zero-overlap) to ensure positive raw scores.
+        query = "Senior Python backend developer with FastAPI PostgreSQL Docker experience."
+        strong_match = (
+            "Python backend developer. Built FastAPI services with PostgreSQL and SQLAlchemy. "
+            "Docker containers Kubernetes deployment. CI/CD pipelines. REST API design patterns."
+        )
+        zero_match_1 = (
+            "Marketing professional with Excel PowerPoint data analysis communication skills "
+            "project management stakeholder engagement brand strategy."
+        )
+        zero_match_2 = (
+            "Nurse practitioner patient care medical records healthcare administration "
+            "clinical documentation electronic health records."
+        )
+
+        raw_scores = compute_bm25_scores(query, [strong_match, zero_match_1, zero_match_2])
+        # Confirm the corpus gives the expected structure
+        assert raw_scores[0] > 0.0, f"strong_match raw BM25 should be positive; got {raw_scores[0]}"
+        assert raw_scores[1] == 0.0, f"zero_match_1 raw BM25 should be zero; got {raw_scores[1]}"
+        assert raw_scores[2] == 0.0, f"zero_match_2 raw BM25 should be zero; got {raw_scores[2]}"
+
+        normalized_scores = compute_normalized_bm25_scores(query, [strong_match, zero_match_1, zero_match_2])
+
+        # Property 1: normalized score equals max(0, min(raw/CAP, 1.0)) for each doc
+        for i, (raw, norm) in enumerate(zip(raw_scores, normalized_scores)):
+            expected = max(0.0, min(raw / BM25_SATURATION_CAP, 1.0))
+            assert abs(norm - expected) < 1e-9, (
+                f"Doc {i}: normalized {norm:.8f} != cap formula {expected:.8f} (raw={raw:.6f})"
+            )
+
+        strong_norm = normalized_scores[0]
+        zero_norm   = normalized_scores[1]
+
+        # Property 2: strong_match must NOT be inflated to 1.0 just because zero_match is 0.0.
+        # Under old min-max this 2-candidate batch would have produced 1.0 vs 0.0.
+        assert strong_norm < 1.0, (
+            f"Strong match should not be inflated to 1.0 in a 2-candidate batch. "
+            f"Got {strong_norm:.4f}. Under old min-max this would have been 1.0."
+        )
+
+        # Property 3: zero-overlap candidate stays at 0.0
+        assert zero_norm == 0.0, (
+            f"Zero-overlap candidate should get 0.0. Got {zero_norm:.4f}."
+        )
+
+        # Property 4: strong match is meaningfully above zero
+        assert strong_norm > 0.0, (
+            f"Strong match should have a positive normalized score. Got {strong_norm:.4f}."
+        )
+
 
 class TestScorer:
     def test_compute_skill_overlap(self):
