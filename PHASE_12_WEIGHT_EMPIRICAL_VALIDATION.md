@@ -58,10 +58,26 @@ The BM25=1.0 score for the keyword stuffer (due to min-max normalization artifac
    - Increase the discriminating power of all components
    - Likely widen the gap between stuffers and genuine candidates
 
+## Critical Caveat: Mock Embeddings Only
+
+**IMPORTANT:** The 3.44-vs-3.17 point gap measurements reported in this validation were obtained using **synthetic L2-normalized mock vectors**, NOT real sentence-transformer output from the `all-MiniLM-L6-v2` model.
+
+**Implications:**
+1. The mock vectors were hand-crafted to simulate high/low semantic similarity by placing large values in different dimensions
+2. Real sentence-transformer embeddings have a learned similarity distribution that may behave differently
+3. The relative ranking (20% providing better discrimination than 40%) may hold, but the absolute gap magnitudes are not representative
+
+**Required Next Step:**
+This validation MUST be re-run with the actual `all-MiniLM-L6-v2` model once it's integrated into the system, before the 30/30/20/20 split is treated as **finalized** rather than **provisional**.
+
+**Status:** The 30/30/20/20 weight split is **provisionally approved** for Phase 12 implementation as a starting baseline, subject to empirical re-validation with real embeddings.
+
+---
+
 ## Recommendation
 
-### Weight Decision: Stick with 30/30/20/20
-The proposed 30/30/20/20 split should be retained for the following reasons:
+### Weight Decision: Stick with 30/30/20/20 (Provisional)
+The proposed 30/30/20/20 split should be retained as a **provisional baseline** for the following reasons:
 
 1. **Empirical evidence supports it:** While 40% vector weight doesn't cause catastrophic failure, the 20% weight does provide slightly better discrimination (3.44 vs 3.17 gap).
 

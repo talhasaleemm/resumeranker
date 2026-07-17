@@ -134,4 +134,34 @@ This phase integrates semantic vector search into the ResumeRanker candidate mat
 ---
 
 ## Observed but out of scope
-* *None identified so far.*
+
+### BM25 Min-Max Normalization Artifact in Small Candidate Batches
+**Issue:** The BM25 scoring engine uses min-max normalization to bound scores between 0.0 and 1.0. In small candidate batches (2-3 candidates), this normalization can produce artificially inflated scores for candidates with even minimal keyword overlap.
+
+**Specific Behavior:**
+- When scoring a batch of only 2 candidates, if one candidate has ANY non-zero BM25 raw score and the other has a zero score, the min-max normalization formula `(score - min) / (max - min)` will assign a 1.0 normalized score to the candidate with non-zero overlap, regardless of how weak that overlap actually is.
+- This artifact does not occur in production-scale batches (10-50+ candidates) where the min and max values are spread across a wider range, providing more granular discrimination.
+
+**Impact on Weight Validation:**
+- The keyword-stuffer test scenario (Case 2) used 2-candidate batches, which gave the backend keyword stuffer an artificial BM25=1.0 score.
+- This made the test scenario MORE conservative (harder to distinguish genuine from stuffer) than real production behavior would be.
+- The 3.44 vs 3.17 gap measurements are likely underestimates of the real-world discrimination power of the weight split.
+
+**Why Deferred:**
+- This is a scoring engine normalization design decision, not a Phase 12 vector search issue.
+- Fixing it would require either:
+  1. Switching from min-max normalization to a different BM25 score normalization strategy (e.g., sigmoid, z-score, or percentile-based)
+  2. Adding a minimum candidate batch size requirement before applying normalization
+  3. Using raw BM25 scores without normalization (would require re-tuning all weights)
+- Any fix would require regression testing across all existing match results and weight configurations.
+- The artifact is only problematic in edge cases (very small candidate pools), which are rare in production recruiting scenarios.
+
+**Recommended Future Work:**
+- Log as a separate bug-fix task: "Investigate BM25 normalization strategy for small candidate batches"
+- Consider adding a unit test that asserts expected BM25 behavior for 2-candidate, 5-candidate, 10-candidate, and 50-candidate batches
+- Evaluate alternative normalization strategies (sigmoid, IDF-weighted, or raw score pass-through) in a controlled A/B test
+
+**References:**
+- Observed during Phase 12 weight validation testing
+- Test case: `tests/test_phase12_weight_validation.py::test_keyword_stuffer_rejection_at_20_percent_vector_weight`
+- Current BM25 implementation: `app/services/matching/bm25_engine.py::compute_normalized_bm25_scores`
