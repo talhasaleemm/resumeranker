@@ -126,6 +126,35 @@ def ingest_candidate_task(self, file_path: str, original_filename: str, recruite
 
         assigned_tags = assign_tags(profile)
 
+        # Build clean PII-redacted professional text for embedding
+        exp_bullets = []
+        for exp in parsed_experience:
+            bullets = exp.get("description", [])
+            if isinstance(bullets, list):
+                exp_bullets.extend(bullets)
+            elif isinstance(bullets, str):
+                exp_bullets.append(bullets)
+        
+        proj_bullets = []
+        for proj in parsed_projects:
+            desc = proj.get("description", "")
+            if desc:
+                proj_bullets.append(desc)
+
+        profile_text_parts = []
+        if parsed_skills:
+            profile_text_parts.append("Skills: " + ", ".join(parsed_skills))
+        if exp_bullets:
+            profile_text_parts.append("Experience:\n" + "\n".join(exp_bullets))
+        if proj_bullets:
+            profile_text_parts.append("Projects:\n" + "\n".join(proj_bullets))
+            
+        redacted_profile_text = "\n\n".join(profile_text_parts)
+
+        from app.services.embedding import get_embedding_service
+        embedding_service = get_embedding_service()
+        embedding_vector = embedding_service.get_embedding(redacted_profile_text)
+
         candidate = None
 
         # Dedup 1: By Email Hash
@@ -158,6 +187,7 @@ def ingest_candidate_task(self, file_path: str, original_filename: str, recruite
             candidate.parsed_experience_encrypted = encrypt_json(parsed_experience)
             candidate.parsed_projects_encrypted = encrypt_json(parsed_projects)
             candidate.assigned_tags = assigned_tags
+            candidate.embedding = embedding_vector
             candidate.is_active = True
             candidate.updated_at = _utcnow()
             action = "updated"
@@ -176,10 +206,12 @@ def ingest_candidate_task(self, file_path: str, original_filename: str, recruite
                 parsed_experience_encrypted=encrypt_json(parsed_experience),
                 parsed_projects_encrypted=encrypt_json(parsed_projects),
                 assigned_tags=assigned_tags,
+                embedding=embedding_vector,
                 is_active=True,
             )
             db.add(candidate)
             action = "created"
+
 
         db.commit()
         db.refresh(candidate)
@@ -206,7 +238,7 @@ def ingest_candidate_task(self, file_path: str, original_filename: str, recruite
 
 
 @celery_app.task(bind=True, name="score_candidates")
-def score_candidates_task(self, job_id: str, candidate_ids: list[str]) -> dict:
+def score_candidates_task(self, job_id: str, candidate_ids: list[str], weights: dict = None) -> dict:
     """
     Load a job and candidates from PostgreSQL, decrypt PII, run TF-IDF/BM25
     scoring, persist MatchResult records, and return the rankings.
@@ -253,12 +285,15 @@ def score_candidates_task(self, job_id: str, candidate_ids: list[str]) -> dict:
                 "skills": c.parsed_skills or [],
                 "experience": decrypt_json(c.parsed_experience_encrypted) or [],
                 "projects": decrypt_json(c.parsed_projects_encrypted) or [],
+                "embedding": c.embedding,
             })
 
         results = score_candidates(
             job_description=job.description,
             job_required_skills=job.required_skills or [],
             candidates=candidates_payload,
+            job_embedding=job.embedding,
+            weights=weights,
         )
 
         matches_out = []
@@ -269,11 +304,13 @@ def score_candidates_task(self, job_id: str, candidate_ids: list[str]) -> dict:
                 tfidf_score=r["tfidf_score"],
                 bm25_score=r["bm25_score"],
                 skill_overlap_score=r["skill_score"],
+                vector_score=r["vector_score"],
                 final_score=r["final_score"],
-                weights_used={
+                weights_used=weights if weights else {
                     "tfidf": get_settings().tfidf_weight,
                     "bm25": get_settings().bm25_weight,
                     "skills": get_settings().skill_weight,
+                    "vector": get_settings().vector_weight,
                 },
                 explanation_log=r["explanation_log"],
             )
@@ -287,9 +324,11 @@ def score_candidates_task(self, job_id: str, candidate_ids: list[str]) -> dict:
                 "tfidf_score": r["tfidf_score"],
                 "bm25_score": r["bm25_score"],
                 "skill_score": r["skill_score"],
+                "vector_score": r["vector_score"],
                 "final_score": r["final_score"],
                 "explanation_log": r["explanation_log"],
             })
+
 
         db.commit()
 
