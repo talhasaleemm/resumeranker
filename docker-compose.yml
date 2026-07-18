@@ -1,39 +1,26 @@
 # =========================================================
-# docker-compose.yml — ResumeRanker
-# Spins up: FastAPI app + PostgreSQL + Redis + Celery Worker
+# docker-compose.yml — ResumeRanker Phase 16 (local stack)
+# Services: FastAPI app + PostgreSQL only
 # =========================================================
 services:
   db:
-    image: pgvector/pgvector:pg16
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-resumeranker}
       POSTGRES_USER: ${POSTGRES_USER:-resumeranker}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword123}
     volumes:
+      # Named volume survives `docker compose down` for durable local data
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-resumeranker} -d ${POSTGRES_DB:-resumeranker}"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
-    networks:
-      - resumeranker_net
-
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+      start_period: 20s
     networks:
       - resumeranker_net
 
@@ -41,21 +28,26 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        SPACY_MODEL: ${SPACY_MODEL:-en_core_web_sm}
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      # Override host/port for in-network PostgreSQL service discovery
+      POSTGRES_HOST: db
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-resumeranker}:${POSTGRES_PASSWORD:-devpassword123}@db:5432/${POSTGRES_DB:-resumeranker}
+      APP_ENV: ${APP_ENV:-development}
     ports:
       - "${APP_PORT:-8001}:8000"
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     volumes:
+      # Hot-reload source in dev; remove bind mounts in production images
       - ./app:/app/app
       - ./alembic.ini:/app/alembic.ini
-      - ./tests:/app/tests
-      - ./scripts:/app/scripts
+      - ./app/migrations:/app/app/migrations
       - ./data:/app/data
     command: >
       sh -c "
@@ -69,33 +61,7 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 60s
-    networks:
-      - resumeranker_net
-
-  celery_worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    env_file:
-      - .env
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./app:/app/app
-      - ./alembic.ini:/app/alembic.ini
-      - ./tests:/app/tests
-      - ./scripts:/app/scripts
-      - ./data:/app/data
-    command: >
-      sh -c "
-        echo '--- Starting Celery worker ---' &&
-        celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
-      "
+      start_period: 90s
     networks:
       - resumeranker_net
 
