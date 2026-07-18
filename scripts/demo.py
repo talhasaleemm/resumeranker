@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
+import io
 import json
 import os
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -19,14 +19,18 @@ except ImportError:
     sys.exit(1)
 
 # If running inside docker, the app is on port 8000. If on host, 8001.
-port = 8000 if os.environ.get('APP_ENV') else 8001
+in_docker = Path('/.dockerenv').exists()
+port = 8000 if in_docker else 8001
 API_BASE = f"http://localhost:{port}/api/v1"
 PHASE13_DIR = Path(__file__).parent.parent / "tests" / "fixtures" / "phase13"
 
-def create_docx(text, path):
+def create_docx_buffer(text):
     doc = Document()
     doc.add_paragraph(text)
-    doc.save(path)
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
 
 def main():
     print("=" * 60)
@@ -45,8 +49,12 @@ def main():
     with httpx.Client(timeout=30.0) as client:
         # 0. Authentication
         print("--- 0. Authentication ---")
-        client.post(f"{API_BASE}/auth/register", json={"email": "demo@example.com", "password": "password", "full_name": "Demo User"})
-        resp = client.post(f"{API_BASE}/auth/token", data={"username": "demo@example.com", "password": "password"})
+        reg_resp = client.post(f"{API_BASE}/auth/register", json={"email": "demo@example.com", "password": "password"})
+        if reg_resp.status_code not in (201, 400):
+            print(f"❌ Registration failed: {reg_resp.text}")
+            sys.exit(1)
+        
+        resp = client.post(f"{API_BASE}/auth/login", data={"username": "demo@example.com", "password": "password"})
         if resp.status_code == 200:
             token = resp.json().get("access_token")
             client.headers.update({"Authorization": f"Bearer {token}"})
@@ -67,30 +75,33 @@ def main():
             "cand_pm_terse.txt"
         ]
         
-        with tempfile.TemporaryDirectory() as tmpdir:
-            for c_name in subset_candidates:
-                filepath = PHASE13_DIR / c_name
-                if not filepath.exists():
-                    print(f"Skipping {c_name} (not found)")
-                    continue
+        for c_name in subset_candidates:
+            filepath = PHASE13_DIR / c_name
+            if not filepath.exists():
+                print(f"Skipping {c_name} (not found)")
+                continue
+            
+            text = filepath.read_text(encoding="utf-8")
+            docx_name = c_name.replace(".txt", ".docx")
+            docx_buffer = create_docx_buffer(text)
+            
+            try:
+                files = {
+                    'file': (
+                        docx_name,
+                        docx_buffer,
+                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    )
+                }
+                resp = client.post(f"{API_BASE}/resumes/", files=files)
                 
-                text = filepath.read_text(encoding="utf-8")
-                docx_name = c_name.replace(".txt", ".docx")
-                docx_path = Path(tmpdir) / docx_name
-                create_docx(text, docx_path)
-                
-                try:
-                    with open(docx_path, "rb") as f:
-                        files = {'file': (docx_name, f, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')}
-                        resp = client.post(f"{API_BASE}/resumes/", files=files)
-                    
-                    if resp.status_code == 202:
-                        task_id = resp.json().get("task_id")
-                        print(f"✅ Ingest queued: {c_name} -> Task {task_id}")
-                    else:
-                        print(f"❌ Failed to ingest {c_name}: {resp.status_code} {resp.text}")
-                except Exception as e:
-                    print(f"❌ Error uploading {c_name}: {e}")
+                if resp.status_code == 202:
+                    task_id = resp.json().get("task_id")
+                    print(f"✅ Ingest queued: {c_name} -> Task {task_id}")
+                else:
+                    print(f"❌ Failed to ingest {c_name}: {resp.status_code} {resp.text}")
+            except Exception as e:
+                print(f"❌ Error uploading {c_name}: {e}")
 
         print("\\nNote: Candidates are ingested asynchronously via Celery.")
         print("Check the web UI or database to view the parsed candidates.")

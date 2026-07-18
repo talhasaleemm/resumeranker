@@ -4,6 +4,15 @@ import { useState, useRef, useEffect, useCallback } from "react";
 
 type TaskStatus = "idle" | "uploading" | "processing" | "success" | "error";
 
+interface ExplanationLog {
+  tfidf_contribution?: number;
+  bm25_contribution?: number;
+  skill_contribution?: number;
+  vector_contribution: number;
+  matched_skills?: string[];
+  missing_skills?: string[];
+}
+
 interface CandidateScore {
   candidate_id: string;
   candidate_name: string | null;
@@ -12,7 +21,7 @@ interface CandidateScore {
   bm25_score: number;
   skill_score: number;
   final_score: number;
-  explanation_log: Record<string, any>;
+  explanation_log: ExplanationLog;
 }
 
 export default function Home() {
@@ -294,7 +303,7 @@ export default function Home() {
                   </div>
 
                   {/* Score breakdown */}
-                  <div className="mt-4 grid grid-cols-3 gap-4 text-sm">
+                  <div className="mt-4 grid grid-cols-4 gap-4 text-sm">
                     <div>
                       <span className="text-zinc-500 dark:text-zinc-400">TF-IDF</span>
                       <div className="font-medium text-zinc-900 dark:text-zinc-50">
@@ -305,6 +314,12 @@ export default function Home() {
                       <span className="text-zinc-500 dark:text-zinc-400">BM25</span>
                       <div className="font-medium text-zinc-900 dark:text-zinc-50">
                         {(c.bm25_score * 100).toFixed(1)}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 dark:text-zinc-400">Semantic Vector</span>
+                      <div className="font-medium text-zinc-900 dark:text-zinc-50">
+                        {c.explanation_log.vector_contribution.toFixed(1)}
                       </div>
                     </div>
                     <div>
