@@ -1,49 +1,142 @@
 # ResumeRanker
 
+[![CI](https://github.com/talhasaleemm/resumeranker/actions/workflows/ci.yml/badge.svg)](https://github.com/talhasaleemm/resumeranker/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **AI Resume Parser and Candidate Matching Platform**
+
+## Demo Video
+
+<video src="https://raw.githubusercontent.com/talhasaleemm/resumeranker/main/docs/assets/ResumeRanker.mp4" controls width="720"></video>
 
 ResumeRanker is a production-ready, AI-powered backend service designed to automate the extraction of candidate information and rank applicants against job descriptions. Built for scale and accuracy, the platform utilizes advanced NLP and information retrieval algorithms to streamline technical recruitment.
 
-Developed by Talha Saleem.
+## Features
 
-## 🏗 System Architecture
+- **AI Resume Parsing**: Extracts skills, experience, education, and contact info from PDF/DOCX resumes using spaCy NER
+- **Multi-Algorithm Matching**: Combines TF-IDF, BM25, skill overlap, and semantic vector search for accurate candidate ranking
+- **Explainable Scores**: Transparent match breakdown with per-candidate contribution analysis
+- **Async Processing**: Celery + Redis for non-blocking ingestion and matching pipelines
+- **Secure by Design**: Argon2 password hashing, JWT auth, Fernet encryption for PII, blind indexes for searchable email hashing
+- **Rate Limited**: SlowAPI-powered rate limiting on all public endpoints
+- **Docker First**: Full containerized stack with Docker Compose for one-command local dev
 
-The application is a containerized, backend-focused platform utilizing an environment-agnostic deployment strategy.
+## Tech Stack
 
-* **Backend Framework:** FastAPI (Python 3.12)
-* **Database:** PostgreSQL (Relational storage for parsed resumes, job posts, ranking scores, and explainable match logs)
-* **NLP / Parsing Engine:** spaCy (Custom NER pipeline for extracting skills, education, and experience from PDF and DOCX formats)
-* **Scoring Engine:** TF-IDF & BM25 Algorithms (Candidate-job relevance matching with skill normalization and weighted scoring)
-* **Infrastructure:** Docker, Docker Compose, Render (Web Service + Private Database)
+| Layer | Technology |
+|-------|-----------|
+| Backend | FastAPI (Python 3.12) |
+| Database | PostgreSQL 16 + pgvector |
+| NLP | spaCy (en_core_web_sm) |
+| Matching | scikit-learn TF-IDF, rank-bm25, SentenceTransformers |
+| Task Queue | Celery + Redis |
+| Frontend | Next.js 16, Tailwind CSS |
+| Infrastructure | Docker, Docker Compose, Render |
 
-## 🚀 Core API Endpoints
+## Project Structure
 
-* `GET /health` - Container health probe for zero-downtime deployments.
-* `POST /api/v1/resumes/upload` - Ingests PDF/DOCX files, triggers the spaCy NER extraction pipeline, and persists structured data to PostgreSQL.
-* `POST /api/v1/jobs` - Creates a new job posting with targeted skill weights.
-* `GET /api/v1/matches/{job_id}` - Executes the TF-IDF/BM25 scoring engine, returning a ranked list of candidates with a 0-100 composite score breakdown.
+```
+├── app/                    # FastAPI backend
+│   ├── api/v1/            # REST endpoints
+│   ├── models/            # SQLAlchemy ORM models
+│   ├── schemas/           # Pydantic schemas
+│   ├── services/          # Business logic (parsing, matching, encryption)
+│   └── worker.py          # Celery task definitions
+├── frontend/              # Next.js frontend
+├── tests/                 # pytest test suite
+├── docs/                  # Documentation and assets
+│   └── assets/            # Images, videos, media
+├── scripts/               # Utility scripts
+├── data/                  # Runtime data (uploads, etc.)
+├── alembic/               # Database migrations
+├── docker-compose.yml     # Container orchestration
+└── render.yaml            # Render deployment blueprint
+```
 
-## 💻 Local Development Setup
+## Quick Start
 
-The local stack runs via Docker Compose, utilizing a named volume for database persistence and hot-reloading for the FastAPI application.
+### Prerequisites
 
-1. **Clone the repository:**
-   `git clone https://github.com/talhasaleemm/resumeranker.git`
-   `cd resumeranker`
+- Python 3.12+
+- PostgreSQL 16+
+- Redis 7+
+- Node.js 20+ (for frontend)
+- Docker & Docker Compose (recommended)
 
-2. **Configure environment variables:**
-   Copy the provided template and populate any required development secrets.
-   `cp .env.example .env`
+### Option A: Docker (Recommended)
 
-3. **Spin up the infrastructure:**
-   This will trigger the multi-stage build, download the `en_core_web_sm` model, run database migrations via Alembic, and start the API on port 8000.
-   `docker compose up --build`
+```bash
+git clone https://github.com/talhasaleemm/resumeranker.git
+cd resumeranker
+cp .env.example .env
+# Edit .env with your settings
+docker compose up --build
+```
 
-## ☁️ Production Deployment (Render)
+The API will be available at `http://localhost:8000` and the frontend at `http://localhost:3000`.
 
-The platform is designed to be deployed directly to Render using the provided Infrastructure-as-Code blueprint (`render.yaml`), which automatically provisions a public Web Service and a Private PostgreSQL instance.
+### Option B: Local Development
 
-1. Connect your GitHub repository to Render.
-2. Navigate to **Blueprints** and select New Blueprint Instance.
-3. Select this repository. Render will automatically parse the `render.yaml` file.
-4. **Important:** Once deployed, navigate to the Render Dashboard for the `resumeranker-api` service and manually set the following synced secrets: `SECRET_KEY`, `JWT_SECRET_KEY`, `ENCRYPTION_KEY`, `BLIND_INDEX_KEY`.
+```bash
+# Backend
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+python -m spacy download en_core_web_sm
+cp .env.example .env
+alembic upgrade head
+uvicorn app.main:app --reload
+
+# Frontend (in another terminal)
+cd frontend
+npm install
+npm run dev
+```
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql+asyncpg://resumeranker:devpassword123@db:5432/resumeranker` |
+| `REDIS_URL` | Redis connection string | `redis://redis:6379/0` |
+| `JWT_SECRET_KEY` | Secret for JWT signing | *(required in production)* |
+| `ENCRYPTION_KEY` | Fernet key for PII encryption | *(required in production)* |
+| `BLIND_INDEX_KEY` | Salt for blind index hashing | *(required in production)* |
+| `DEV_SEED_DEMO_RECRUITER` | Auto-create demo user on startup | `false` |
+| `DEV_DEMO_RECRUITER_EMAIL` | Demo user email | `demo@resumeranker.local` |
+| `DEV_DEMO_RECRUITER_PASSWORD` | Demo user password | `demo1234` |
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health probe |
+| `POST` | `/api/v1/auth/register` | Register new user |
+| `POST` | `/api/v1/auth/login` | Login (returns JWT) |
+| `POST` | `/api/v1/resumes/` | Upload resume (async) |
+| `GET` | `/api/v1/resumes/` | List your candidates |
+| `POST` | `/api/v1/jobs/` | Create job posting |
+| `GET` | `/api/v1/jobs/` | List your jobs |
+| `POST` | `/api/v1/matches/` | Run matching (async) |
+| `GET` | `/api/v1/tasks/{task_id}` | Poll async task status |
+
+## Testing
+
+```bash
+# Install test dependencies
+pip install pytest pytest-asyncio httpx
+
+# Run all tests
+pytest tests/ -v
+
+# Run specific test file
+pytest tests/test_matching.py -v
+```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on reporting issues, suggesting features, and submitting pull requests.
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.

@@ -13,7 +13,6 @@ from app.database import Base
 from pgvector.sqlalchemy import Vector
 
 
-
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -23,6 +22,9 @@ class Job(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     recruiter_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("recruiters.id", ondelete="CASCADE"), nullable=False
@@ -49,6 +51,9 @@ class Job(Base):
     )
 
     # Relationships
+    owner: Mapped["User"] = relationship(  # type: ignore[name-defined]
+        "User", back_populates="jobs"
+    )
     recruiter: Mapped["Recruiter"] = relationship(  # type: ignore[name-defined]
         "Recruiter", back_populates="jobs"
     )
@@ -58,3 +63,34 @@ class Job(Base):
 
     def __repr__(self) -> str:
         return f"<Job id={self.id} title={self.title!r}>"
+
+
+class JobHistory(Base):
+    __tablename__ = "job_histories"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    required_skills: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+    # Relationships
+    owner: Mapped["User"] = relationship(  # type: ignore[name-defined]
+        "User", back_populates="job_histories"
+    )
+
+    def __repr__(self) -> str:
+        return f"<JobHistory id={self.id} title={self.title!r}>"

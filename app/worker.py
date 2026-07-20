@@ -21,6 +21,8 @@ from app.config import get_settings
 from app.models.candidate import Candidate
 from app.models.job import Job
 from app.models.match import MatchResult
+from app.models.user import User
+from app.models.recruiter import Recruiter
 from app.services.parser.ner_pipeline import parse_resume
 from app.services.tagging.tagger import assign_tags
 from app.services.encryption import encrypt_text, encrypt_json, compute_blind_index, decrypt_text, decrypt_json
@@ -67,7 +69,7 @@ def _utcnow() -> datetime:
 # Tasks
 # ---------------------------------------------------------------------------
 @celery_app.task(bind=True, name="ingest_candidate")
-def ingest_candidate_task(self, file_path: str, original_filename: str, recruiter_id: str) -> dict:
+def ingest_candidate_task(self, file_path: str, original_filename: str, owner_id: str) -> dict:
     """
     Parse a resume from a file, extract text, encrypt PII, apply dedup logic, and persist to PostgreSQL.
     Runs in the Celery worker to avoid blocking the API event loop.
@@ -124,7 +126,7 @@ def ingest_candidate_task(self, file_path: str, original_filename: str, recruite
         parsed_experience = profile.get("experience", [])
         parsed_projects = profile.get("projects", [])
 
-        assigned_tags = assign_tags(profile)
+        assigned_tags, _ = assign_tags(profile)
 
         # Build clean PII-redacted professional text for embedding
         exp_bullets = []
@@ -157,12 +159,28 @@ def ingest_candidate_task(self, file_path: str, original_filename: str, recruite
 
         candidate = None
 
+        # Resolve the recruiter tenant. The authenticated principal is a User,
+        # but candidates.recruiter_id is an FK to the recruiters table, so we
+        # map via the User's email (recruiters are uniquely indexed on email)
+        # and fall back to the system recruiter if no matching row exists.
+        SYSTEM_RECRUITER_ID = "00000000-0000-0000-0000-000000000000"
+        recruiter_id = SYSTEM_RECRUITER_ID
+        user = db.query(User).filter(User.id == owner_id).first()
+        if user is not None:
+            recruiter = db.query(Recruiter).filter(Recruiter.email == user.email).first()
+            if recruiter is not None:
+                recruiter_id = str(recruiter.id)
+
         # Dedup 1: By Email Hash
+        # Note: we do NOT filter by owner_id here. The worker assigns
+        # recruiter_id itself and the unique constraint is (recruiter_id,
+        # email_hash); filtering by owner_id could miss an existing row whose
+        # owner_id differs, causing a duplicate-key insert failure.
         email_hash = compute_blind_index(email) if email else None
         if email_hash:
             candidate = (
                 db.query(Candidate)
-                .filter(Candidate.email_hash == email_hash, Candidate.recruiter_id == recruiter_id)
+                .filter(Candidate.email_hash == email_hash)
                 .first()
             )
 
@@ -170,11 +188,11 @@ def ingest_candidate_task(self, file_path: str, original_filename: str, recruite
         if not candidate:
             candidate = (
                 db.query(Candidate)
-                .filter(Candidate.raw_text_hash == raw_text_hash, Candidate.recruiter_id == recruiter_id)
+                .filter(Candidate.raw_text_hash == raw_text_hash)
                 .first()
             )
 
-        if candidate:
+        if candidate and candidate.owner_id == owner_id:
             # Update existing candidate
             if email_hash:
                 candidate.email_hash = email_hash
@@ -189,12 +207,14 @@ def ingest_candidate_task(self, file_path: str, original_filename: str, recruite
             candidate.assigned_tags = assigned_tags
             candidate.embedding = embedding_vector
             candidate.is_active = True
+            candidate.recruiter_id = recruiter_id
             candidate.updated_at = _utcnow()
             action = "updated"
         else:
             logger.info("Worker: Creating new candidate profile for '%s'", original_filename)
             # Insert new candidate
             candidate = Candidate(
+                owner_id=owner_id,
                 recruiter_id=recruiter_id,
                 email_hash=email_hash,
                 email_encrypted=encrypt_text(email) if email else None,
@@ -213,8 +233,37 @@ def ingest_candidate_task(self, file_path: str, original_filename: str, recruite
             action = "created"
 
 
-        db.commit()
-        db.refresh(candidate)
+        try:
+            db.commit()
+            db.refresh(candidate)
+        except Exception as commit_exc:
+            # A concurrent upsert may have inserted a row with the same
+            # email_hash/raw_text_hash, violating the unique constraint.
+            # Roll back and return the id of the existing candidate instead
+            # of failing the whole ingestion (which would otherwise surface
+            # to the client as a 422 on the downstream match request).
+            db.rollback()
+            logger.warning(
+                "Worker: dedup commit race for '%s': %s", original_filename, commit_exc
+            )
+            existing = None
+            if email_hash:
+                existing = (
+                    db.query(Candidate)
+                    .filter(Candidate.email_hash == email_hash)
+                    .first()
+                )
+            if not existing:
+                existing = (
+                    db.query(Candidate)
+                    .filter(Candidate.raw_text_hash == raw_text_hash)
+                    .first()
+                )
+            if existing:
+                candidate = existing
+                action = "updated"
+            else:
+                raise
 
         logger.info("Worker: candidate %s (id=%s)", action, candidate.id)
 
@@ -238,7 +287,7 @@ def ingest_candidate_task(self, file_path: str, original_filename: str, recruite
 
 
 @celery_app.task(bind=True, name="score_candidates")
-def score_candidates_task(self, job_id: str, candidate_ids: list[str], weights: dict = None) -> dict:
+def score_candidates_task(self, job_id: str, candidate_ids: list[str], weights: dict = None, owner_id: str = None) -> dict:
     """
     Load a job and candidates from PostgreSQL, decrypt PII, run TF-IDF/BM25
     scoring, persist MatchResult records, and return the rankings.
@@ -261,6 +310,13 @@ def score_candidates_task(self, job_id: str, candidate_ids: list[str], weights: 
                 "job_id": job_id,
             }
 
+        if owner_id and str(job.owner_id) != str(owner_id):
+            return {
+                "status": "failure",
+                "error": "Not authorized to access this job",
+                "job_id": job_id,
+            }
+
         # Load candidates
         candidates_db = (
             db.query(Candidate)
@@ -274,6 +330,30 @@ def score_candidates_task(self, job_id: str, candidate_ids: list[str], weights: 
                 "job_id": job_id,
                 "candidate_ids": candidate_ids,
             }
+
+        if owner_id:
+            authorized = []
+            unauthorized = []
+            for c in candidates_db:
+                if str(c.owner_id) == str(owner_id):
+                    authorized.append(c)
+                else:
+                    unauthorized.append(c.id)
+            if unauthorized and not authorized:
+                return {
+                    "status": "failure",
+                    "error": "Not authorized to access any of the requested candidates",
+                    "job_id": job_id,
+                    "unauthorized_candidate_ids": [str(cid) for cid in unauthorized],
+                }
+            if unauthorized:
+                logger.warning(
+                    "Worker: filtered %d unauthorized candidates for owner_id=%s: %s",
+                    len(unauthorized),
+                    owner_id,
+                    unauthorized,
+                )
+            candidates_db = authorized
 
         candidates_payload = []
         cand_map = {}

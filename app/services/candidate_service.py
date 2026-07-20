@@ -14,7 +14,7 @@ from app.services.encryption import encrypt_text, encrypt_json, compute_blind_in
 
 
 async def ingest_candidate(
-    db: AsyncSession, raw_text: str, recruiter_id: str, filename: str = "unknown"
+    db: AsyncSession, raw_text: str, owner_id: str, filename: str = "unknown"
 ) -> Candidate:
     """
     Parses a resume and persists it to the database with dedup logic.
@@ -37,13 +37,13 @@ async def ingest_candidate(
     # Dedup 1: By Email Hash
     email_hash = compute_blind_index(email) if email else None
     if email_hash:
-        stmt = select(Candidate).where(Candidate.email_hash == email_hash, Candidate.recruiter_id == recruiter_id)
+        stmt = select(Candidate).where(Candidate.email_hash == email_hash, Candidate.owner_id == owner_id)
         result = await db.execute(stmt)
         candidate = result.scalar_one_or_none()
 
     # Dedup 2: By raw_text_hash
     if not candidate:
-        stmt = select(Candidate).where(Candidate.raw_text_hash == raw_text_hash, Candidate.recruiter_id == recruiter_id)
+        stmt = select(Candidate).where(Candidate.raw_text_hash == raw_text_hash, Candidate.owner_id == owner_id)
         result = await db.execute(stmt)
         candidate = result.scalar_one_or_none()
 
@@ -64,7 +64,7 @@ async def ingest_candidate(
     else:
         # Insert new candidate
         candidate = Candidate(
-            recruiter_id=recruiter_id,
+            owner_id=owner_id,
             email_hash=email_hash,
             email_encrypted=encrypt_text(email) if email else None,
             raw_text_hash=raw_text_hash,

@@ -12,10 +12,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.rate_limiter import limiter
-from app.schemas.responses import ResumeUploadResponse, AsyncAcceptedResponse, MessageResponse
+from app.schemas.responses import (
+    ResumeUploadResponse,
+    AsyncAcceptedResponse,
+    MessageResponse,
+    CandidateListResponse,
+    CandidateSummary,
+)
+from app.models.candidate import Candidate
 from app.worker import ingest_candidate_task
-from app.models.recruiter import Recruiter
-from app.services.auth_service import get_current_active_recruiter
+from app.models.user import User
+from app.services.auth_service import get_current_active_user
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
 
@@ -35,7 +42,7 @@ async def upload_resume(
     request: Request, 
     file: UploadFile = File(...), 
     db: AsyncSession = Depends(get_db),
-    current_user: Recruiter = Depends(get_current_active_recruiter)
+    current_user: User = Depends(get_current_active_user)
 ):
     """
     Submit a resume binary file for asynchronous parsing and ingestion.
@@ -47,30 +54,49 @@ async def upload_resume(
     if file.content_type not in ALLOWED_MIMETYPES:
         raise HTTPException(status_code=415, detail="Unsupported media type (must be PDF or DOCX)")
         
-    ext = Path(file.filename).suffix.lower()
+    ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=415, detail="Unsupported file extension (must be .pdf or .docx)")
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported file extension '{ext or 'none'}' (must be .pdf or .docx)",
+        )
 
     file_id = uuid.uuid4().hex
     safe_filename = f"{file_id}{ext}"
     file_path = UPLOAD_DIR / safe_filename
 
-    # Manually check size if file.size isn't accurately populated
-    real_size = 0
-    with open(file_path, "wb") as buffer:
-        while chunk := await file.read(8192):
-            real_size += len(chunk)
-            if real_size > MAX_FILE_SIZE:
-                buffer.close()
+    # Manually check size if file.size isn't accurately populated.
+    # Wrap disk I/O so permission/IO errors return an explicit payload
+    # instead of an uncaught 500.
+    try:
+        real_size = 0
+        with open(file_path, "wb") as buffer:
+            while chunk := await file.read(8192):
+                real_size += len(chunk)
+                if real_size > MAX_FILE_SIZE:
+                    buffer.close()
+                    file_path.unlink()
+                    raise HTTPException(status_code=413, detail="File too large (max 10MB)")
+                buffer.write(chunk)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # Clean up any partial file and return a structured error.
+        try:
+            if file_path.exists():
                 file_path.unlink()
-                raise HTTPException(status_code=413, detail="File too large (max 10MB)")
-            buffer.write(chunk)
+        except OSError:
+            pass
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save uploaded file: {exc}",
+        )
 
     # Pass the actual file path and the original filename (for logging/metadata, not path traversal)
     task = ingest_candidate_task.delay(
-        file_path=str(file_path), 
+        file_path=str(file_path),
         original_filename=file.filename,
-        recruiter_id=str(current_user.id)
+        owner_id=str(current_user.id)
     )
     
     return AsyncAcceptedResponse(
@@ -79,8 +105,33 @@ async def upload_resume(
         message="Resume is being processed. Use GET /api/v1/tasks/{task_id} to check status.",
     )
 
-@router.get("/", summary="List all candidates", response_model=MessageResponse)
+@router.get("/", summary="List your candidates", response_model=CandidateListResponse)
 @limiter.limit("60/minute")
-async def list_candidates(request: Request):
-    """List candidates — not yet implemented."""
-    return MessageResponse(message="Candidate listing not yet implemented.")
+async def list_candidates(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """List candidates owned by the authenticated user."""
+    from sqlalchemy import select
+
+    stmt = (
+        select(Candidate)
+        .where(Candidate.owner_id == current_user.id)
+        .order_by(Candidate.created_at.desc())
+    )
+    res = await db.execute(stmt)
+    candidates = res.scalars().all()
+    return CandidateListResponse(
+        count=len(candidates),
+        candidates=[
+            CandidateSummary(
+                id=c.id,
+                name=c.name,
+                email=c.email,
+                skills=c.parsed_skills or [],
+                created_at=c.created_at,
+            )
+            for c in candidates
+        ],
+    )

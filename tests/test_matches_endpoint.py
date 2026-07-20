@@ -9,8 +9,8 @@ from app.config import get_settings
 from app.database import get_db
 from app.services.candidate_service import ingest_candidate
 from app.models.job import Job
-from app.models.recruiter import Recruiter
-from app.services.auth_service import get_current_active_recruiter
+from app.models.user import User
+from app.services.auth_service import get_current_active_user
 
 # Disable rate limiter for test client
 app.state.limiter.enabled = False
@@ -24,13 +24,13 @@ async def override_get_db():
         await session.commit()
     await engine.dispose()
 
-async def override_get_current_active_recruiter():
-    return Recruiter(id=uuid.UUID('00000000-0000-0000-0000-000000000000'), email="test@test.com", is_active=True)
+async def override_get_current_active_user():
+    return User(id=uuid.UUID('00000000-0000-0000-0000-000000000000'), email="test@test.com", is_active=True, hashed_password="test")
 
 @pytest.fixture(autouse=True)
 def setup_overrides():
     app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[get_current_active_recruiter] = override_get_current_active_recruiter
+    app.dependency_overrides[get_current_active_user] = override_get_current_active_user
     yield
     app.dependency_overrides.clear()
 
@@ -40,19 +40,20 @@ async def setup_data():
     engine = create_async_engine(settings.database_url, poolclass=NullPool)
     TestingSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=engine)
     async with TestingSessionLocal() as session:
-        # Get the recruiter_id from the dependency override
-        recruiter = await override_get_current_active_recruiter()
-        recruiter_id = str(recruiter.id)
+        # Get the user_id from the dependency override
+        user = await override_get_current_active_user()
+        user_id = str(user.id)
         
-        cand1 = await ingest_candidate(session, raw_text=f"I am a backend developer writing Python and React code for my web apps. I have a B.S. in Computer Science. {uuid.uuid4()}", filename="cand1.pdf", recruiter_id=recruiter_id)
-        cand2 = await ingest_candidate(session, raw_text=f"I program in Java and Spring Boot. {uuid.uuid4()}", filename="cand2.pdf", recruiter_id=recruiter_id)
+        cand1 = await ingest_candidate(session, raw_text=f"I am a backend developer writing Python and React code for my web apps. I have a B.S. in Computer Science. {uuid.uuid4()}", filename="cand1.pdf", owner_id=user_id)
+        cand2 = await ingest_candidate(session, raw_text=f"I program in Java and Spring Boot. {uuid.uuid4()}", filename="cand2.pdf", owner_id=user_id)
         
         job = Job(
             title="Python Developer",
             description="We need a Python developer who knows React.",
             required_skills=["python", "react"],
             preferred_skills=[],
-            recruiter_id=recruiter.id
+            owner_id=user.id,
+            recruiter_id=uuid.UUID('00000000-0000-0000-0000-000000000000')
         )
         session.add(job)
         await session.flush()

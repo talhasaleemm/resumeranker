@@ -56,3 +56,49 @@ class TaskResponse(BaseModel):
     task_id: str
     status: str
     result: Any | None = None
+
+
+class CandidateSummary(BaseModel):
+    """Lightweight candidate view for listing."""
+    id: uuid.UUID
+    name: str | None = None
+    email: str | None = None
+    skills: list[str] = []
+    created_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class CandidateListResponse(BaseModel):
+    count: int
+    candidates: list[CandidateSummary]
+
+
+class JobSummary(BaseModel):
+    id: uuid.UUID
+    title: str
+    description: str | None = None
+    created_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class JobListResponse(BaseModel):
+    count: int
+    jobs: list[JobSummary]
+
+
+class MatchHistoryItem(BaseModel):
+    job_id: uuid.UUID
+    job_title: str | None = None
+    candidate_id: uuid.UUID
+    candidate_name: str | None = None
+    final_score: float
+    created_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class MatchHistoryResponse(BaseModel):
+    count: int
+    matches: list[MatchHistoryItem]

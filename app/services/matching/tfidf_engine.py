@@ -36,6 +36,6 @@ def compute_tfidf_scores(query: str, documents: List[str]) -> List[float]:
     
     # Compute cosine similarity
     similarity_scores = cosine_similarity(query_vector, doc_vectors)
-    
-    # Returns an array of shape (1, n_docs), flatten it to a list
-    return similarity_scores.flatten().tolist()
+    scores = similarity_scores.flatten().tolist()
+
+    return scores

@@ -4,7 +4,9 @@
 # =========================================================
 services:
   db:
-    image: postgres:16-alpine
+    # pgvector-enabled PostgreSQL 16 (provides the `vector` extension library
+    # required by the jobs/candidates embedding columns).
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-resumeranker}
@@ -62,6 +64,55 @@ services:
       timeout: 5s
       retries: 3
       start_period: 90s
+    networks:
+      - resumeranker_net
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - resumeranker_net
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SPACY_MODEL: ${SPACY_MODEL:-en_core_web_sm}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-resumeranker}:${POSTGRES_PASSWORD:-devpassword123}@db:5432/${POSTGRES_DB:-resumeranker}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      APP_ENV: ${APP_ENV:-development}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app
+      - ./data:/app/data
+    command: >
+      sh -c "celery -A app.worker.celery_app worker --loglevel=info --concurrency=2"
+    healthcheck:
+      # Celery worker reports status via the inspect ping control command.
+      # Use CMD-SHELL so the destination glob is expanded by the shell.
+      test: ["CMD-SHELL", "celery -A app.worker.celery_app inspect ping -d celery@*"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     networks:
       - resumeranker_net
 

@@ -530,3 +530,20 @@ The phase goal is met: a genuine frontend engineer (D) beats a backend keyword-s
 1. **Weight finalization:** The 30/30/20/20 split is still provisional. Re-validate with production-scale batches (10–50 candidates) once real usage data is available.
 2. **BM25 small-corpus note:** In 1–2 candidate batches, BM25 will often be 0.0 due to negative IDF. This is correct behavior but means BM25 contributes nothing when scoring a single candidate. The composite score in such cases is driven by TF-IDF, skills, and vector alone — acceptable for now.
 3. **PII content-scanning:** Replace structural-exclusion redaction with NER-based content scanning before any deployment with real resume data.
+
+---
+
+## Phase 13 -- Self-Serve Onboarding + Demo Auto-Seeding
+**Status:** [DONE] Complete  
+**Date:** 2026-07-20
+### What was built
+- `app/api/v1/auth.py` `/register` now creates both a `User` and a `Recruiter` tenant in a single transaction
+- Auto-ingests `tests/sample_resumes/resume_backend_engineer.pdf` via `ingest_candidate_task.delay(...)` on successful registration
+- `app/worker.py` dedup logic fixed: when an existing candidate is found by `email_hash` or `raw_text_hash` but belongs to a different `owner_id`, a new candidate is created for the current user instead of silently reusing the old row
+- End-to-end verified: new user registration → auto-seeded resume → job creation → match → 100.0 score (Aisha Raza)
+### Files changed
+- `app/api/v1/auth.py` — rewrote `/register`, added `DEMO_RESUME_PATH`, auto-ingest dispatch
+- `app/worker.py` — dedup `owner_id` guard at line 195
+### Future work
+- Make demo resume path configurable per tenant
+- Add onboarding tutorial UI in frontend

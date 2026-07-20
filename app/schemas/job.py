@@ -23,3 +23,22 @@ class JobOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class JobHistoryCreate(BaseModel):
+    title: str = Field(..., min_length=2, max_length=500)
+    description: str = Field(..., min_length=10, max_length=50000)
+    required_skills: str | None = Field(default=None, max_length=5000)
+
+
+class JobHistoryResponse(BaseModel):
+    id: uuid.UUID
+    owner_id: uuid.UUID
+    title: str
+    description: str
+    required_skills: str | None = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}

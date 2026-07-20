@@ -3,6 +3,7 @@ app/services/matching/scorer.py — Match Scorer Pipeline
 Combines TF-IDF, BM25, and exact skill matching into a unified 0-100 match score.
 """
 from typing import List, Dict, Any
+from rapidfuzz import fuzz
 from app.config import get_settings
 from app.services.matching.tfidf_engine import compute_tfidf_scores
 from app.services.matching.bm25_engine import compute_normalized_bm25_scores
@@ -10,23 +11,21 @@ from app.services.normalization.normalizer import normalize_skills_list, normali
 from app.services.tagging.tagger import assign_tags
 
 
-def compute_skill_overlap(job_skills: List[str], candidate_skills: List[str]) -> float:
-    """
-    Computes Jaccard-like overlap for skills.
-    Normalizes both lists, then calculates what percentage of job_skills
-    are present in the candidate_skills.
-    """
+def compute_skill_overlap(job_skills: list[str], candidate_skills: list[str]) -> float:
     if not job_skills:
-        return 1.0  # If job requires no specific skills, auto-pass skill check
-
-    norm_job_skills = set(normalize_skills_list(job_skills))
-    norm_cand_skills = set(normalize_skills_list(candidate_skills))
+        return 0.0
     
-    if not norm_job_skills:
-        return 1.0
+    if not candidate_skills:
+        return 0.0
 
-    overlap = norm_job_skills.intersection(norm_cand_skills)
-    return len(overlap) / len(norm_job_skills)
+    matched_count = 0
+    for j_skill in job_skills:
+        best_match = max([fuzz.WRatio(j_skill.lower(), c_skill.lower()) for c_skill in candidate_skills] + [0])
+        
+        if best_match >= 85.0:
+            matched_count += 1
+            
+    return matched_count / len(job_skills)
 
 
 def compute_cosine_similarity(vec_a: List[float], vec_b: List[float]) -> float:
@@ -69,53 +68,58 @@ def score_candidates(
     if not candidates:
         return []
 
-    # Resolve active weights
-    w_tfidf = weights.get("tfidf", settings.tfidf_weight) if weights else settings.tfidf_weight
-    w_bm25 = weights.get("bm25", settings.bm25_weight) if weights else settings.bm25_weight
-    w_skills = weights.get("skills", settings.skill_weight) if weights else settings.skill_weight
-    w_vector = weights.get("vector", settings.vector_weight) if weights else settings.vector_weight
-
     # Prepare corpus
     candidate_texts = [c.get("raw_text", "") for c in candidates]
     
-    # 1. Compute TF-IDF
+    # 1. Compute TF-IDF (batch min-max normalized in tfidf_engine)
     tfidf_scores = compute_tfidf_scores(job_description, candidate_texts)
     
-    # 2. Compute BM25 (Normalized)
+    # 2. Compute BM25 (already normalized in bm25_engine)
     bm25_scores = compute_normalized_bm25_scores(job_description, candidate_texts)
+    
+    # 3. Compute raw vector scores for all candidates (before normalization)
+    raw_vec_scores: List[float] = []
+    for candidate in candidates:
+        cand_embedding = candidate.get("embedding", None)
+        if job_embedding is not None and cand_embedding is not None and len(job_embedding) > 0 and len(cand_embedding) > 0:
+            raw_vec_scores.append(compute_cosine_similarity(job_embedding, cand_embedding))
+        else:
+            raw_vec_scores.append(0.0)
+    
+    # 4. Vector scores are raw cosine similarities clipped to [0.0, 1.0].
+    #    No batch normalization is applied so the score reflects absolute
+    #    semantic similarity rather than relative ranking within the batch.
+    vec_scores: List[float] = raw_vec_scores
     
     results = []
     
     for i, candidate in enumerate(candidates):
         cand_id = candidate.get("id")
         cand_skills = candidate.get("skills", [])
-        cand_embedding = candidate.get("embedding", None)
         
-        # 3. Compute Skill Overlap
+        # 5. Compute Skill Overlap
         skill_score = compute_skill_overlap(job_required_skills, cand_skills)
         
-        # 4. Compute Vector Similarity (Cosine Similarity)
-        vec_score = 0.0
-        # Use explicit None checks + len to avoid ValueError when embeddings are numpy arrays
-        # (pgvector returns numpy arrays whose truthiness requires .any()/.all())
-        if job_embedding is not None and cand_embedding is not None and len(job_embedding) > 0 and len(cand_embedding) > 0:
-            vec_score = compute_cosine_similarity(job_embedding, cand_embedding)
-            
         tf_score = tfidf_scores[i]
         bm_score = bm25_scores[i]
-        
-        # Weighted Final Score (0.0 - 1.0)
+        vec_score = vec_scores[i]
+
+        # Ensure hardcoded weights sum exactly to 1.0
+        w_skills = 0.40
+        w_vector = 0.40
+        w_bm25 = 0.15
+        w_tfidf = 0.05
+
+        # Weighted Final Score (guaranteed 0.0 - 1.0 float bounding)
         raw_final = (
             (tf_score * w_tfidf) +
             (bm_score * w_bm25) +
             (skill_score * w_skills) +
             (vec_score * w_vector)
         )
-        
-        # Ensure it sums to exactly 0-100 cleanly
-        total_weight = w_tfidf + w_bm25 + w_skills + w_vector
-        if total_weight > 0:
-            raw_final = raw_final / total_weight
+
+        # Optional: Add boundary failsafe
+        raw_final = max(0.0, min(raw_final, 1.0))
             
         final_score_100 = round(raw_final * 100, 2)
         

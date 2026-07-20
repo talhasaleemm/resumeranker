@@ -5,11 +5,11 @@ import uuid
 from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field
 
-class RecruiterCreate(BaseModel):
+class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
 
-class RecruiterResponse(BaseModel):
+class UserResponse(BaseModel):
     id: uuid.UUID
     email: EmailStr
     is_active: bool

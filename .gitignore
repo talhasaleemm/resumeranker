@@ -4,6 +4,9 @@
 .env.*
 !.env.example
 
+# === Kilo Config (user-specific) ===
+.kilo/
+
 # === Python ===
 __pycache__/
 *.py[cod]
@@ -34,7 +37,6 @@ MANIFEST
 venv/
 .venv/
 env/
-.env/
 ENV/
 env.bak/
 venv.bak/
@@ -63,14 +65,16 @@ Thumbs.db
 *.log
 
 # === Alembic ===
-# Keep versions/ but ignore cache
 alembic/__pycache__/
 
-# === Node (if any tooling) ===
-node_modules/
+# === Node / Frontend ===
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.vercel
 
 # === OS ===
-*.DS_Store
+.DS_Store
 ehthumbs.db
 Desktop.ini
 

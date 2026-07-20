@@ -149,7 +149,7 @@ def parse_resume(
     sections = _split_into_sections(raw_text)
 
     # Step 4: Parse each section
-    skills = _parse_skills_section(sections.get("skills", ""), doc)
+    skills = _parse_skills_section(raw_text, doc)
     education = _parse_education_section(sections.get("education", ""), doc)
     experience = _parse_experience_section(sections.get("experience", ""), doc)
     projects = _parse_projects_section(sections.get("projects", ""), doc)
@@ -284,35 +284,58 @@ def _detect_section_header(line: str) -> str | None:
 # Section parsers
 # ---------------------------------------------------------------------------
 
-def _parse_skills_section(text: str, doc) -> list[str]:
+def _parse_skills_section(raw_text: str, doc) -> list[str]:
     """
-    Extract skills from the skills section.
-    Handles comma/pipe/bullet/newline separated skill lists.
+    Extract skills from the entire resume text.
+    Uses n-gram extraction with stop-word removal to identify potential skills.
     """
-    if not text:
+    if not raw_text:
         return []
 
-    # Replace bullet/pipe/slash separators with commas but PRESERVE internal hyphens
-    # (scikit-learn, Next.js, etc must not be split)
-    normalized = re.sub(r"[•·▪▸►|/\\]", ",", text)
-    # Replace em/en dashes only when surrounded by spaces (section separators, not compound words)
+    # Normalize separators
+    normalized = re.sub(r"[•·▪▸►|/\\]", ",", raw_text)
     normalized = re.sub(r"\s[–—]\s", ",", normalized)
-    # Split on commas, semicolons, newlines
+    
+    # Split into candidate phrases
     raw_skills = re.split(r"[,;\n]+", normalized)
-
+    
+    # Get stop words
+    try:
+        nlp = _load_nlp()
+        stop_words = set(nlp.Defaults.stop_words)
+    except Exception:
+        stop_words = set()
+    
+    stop_words.update({"experience", "engineer", "developer", "senior", "junior", "years", "worked", "used", "using", "built", "developed"})
+    
     skills: list[str] = []
     for raw in raw_skills:
         skill = raw.strip()
-        # Strip category prefix, e.g. "Languages: Python" -> "Python"
         skill = re.sub(r"^[A-Za-z\s]+:\s*", "", skill).strip()
-        # Filter: not empty, reasonable length, not a full sentence
-        if skill and 1 < len(skill) <= 60 and len(skill.split()) <= 6:
-            # Remove leading/trailing non-word chars (but keep internal dots/hyphens)
-            skill = re.sub(r"^[^\w]+|[^\w.)]+$", "", skill).strip()
-            if skill and not skill.isdigit():
-                skills.append(skill)
-
-    return list(dict.fromkeys(skills))  # deduplicate, preserve order
+        if not skill or len(skill) > 60:
+            continue
+        
+        skill = re.sub(r"^[^\w]+|[^\w.)]+$", "", skill).strip()
+        if not skill or skill.isdigit():
+            continue
+        
+        # Generate 1-3 word n-grams from the phrase
+        tokens = [t.lower() for t in re.findall(r"\b\w+\b", skill) if t.lower() not in stop_words]
+        if not tokens:
+            continue
+        
+        # Add original phrase if reasonable length
+        if len(skill.split()) <= 6:
+            skills.append(skill)
+        
+        # Add 1-3 word n-grams
+        for n in range(1, min(4, len(tokens) + 1)):
+            for i in range(len(tokens) - n + 1):
+                ngram = " ".join(tokens[i:i+n])
+                if 1 < len(ngram) <= 60:
+                    skills.append(ngram)
+    
+    return list(dict.fromkeys(skills))
 
 
 def _parse_education_section(text: str, doc) -> list[dict]:

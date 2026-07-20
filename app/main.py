@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
-from app.api.v1 import resumes, jobs, matches, tasks, auth
+from app.api.v1 import resumes, jobs, matches, tasks, auth, job_histories
 from app.config import get_settings
 from app.rate_limiter import limiter, _custom_rate_limit_handler
 
@@ -30,6 +30,40 @@ logging.basicConfig(
 async def lifespan(app: FastAPI):
     """Application startup / shutdown logic."""
     logger.info("=== ResumeRanker starting up (env=%s) ===", settings.app_env)
+
+    # Seed a demo user for local development so the frontend can log in
+    # and obtain a real JWT without manual registration. Never runs in prod.
+    if not settings.is_production and settings.dev_seed_demo_recruiter:
+        from sqlalchemy import select
+
+        from app.database import AsyncSessionLocal
+        from app.models.user import User
+        from app.services.auth_service import get_password_hash
+
+        try:
+            async with AsyncSessionLocal() as session:
+                existing = await session.scalar(
+                    select(User).where(
+                        User.email == settings.dev_demo_recruiter_email
+                    )
+                )
+                if existing is None:
+                    session.add(
+                        User(
+                            email=settings.dev_demo_recruiter_email,
+                            hashed_password=get_password_hash(
+                                settings.dev_demo_recruiter_password
+                            ),
+                        )
+                    )
+                    await session.commit()
+                    logger.info(
+                        "Seeded demo user %s for local development",
+                        settings.dev_demo_recruiter_email,
+                    )
+        except Exception as exc:  # pragma: no cover - best effort seeding
+            logger.warning("Demo user seeding skipped: %s", exc)
+
     yield
     logger.info("=== ResumeRanker shutting down ===")
 
@@ -45,6 +79,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
+    redirect_slashes=False,
 )
 
 app.state.limiter = limiter
@@ -54,7 +89,7 @@ app.state.limiter = limiter
 # ---------------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if not settings.is_production else [],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -88,6 +123,7 @@ API_V1_PREFIX = "/api/v1"
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(resumes.router, prefix=API_V1_PREFIX)
 app.include_router(jobs.router, prefix=API_V1_PREFIX)
+app.include_router(job_histories.router, prefix=API_V1_PREFIX)
 app.include_router(matches.router, prefix=API_V1_PREFIX)
 app.include_router(tasks.router, prefix=API_V1_PREFIX)
 

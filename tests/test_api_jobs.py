@@ -4,15 +4,15 @@ from app.main import app
 from app.database import get_db
 from app.models.job import Job
 import uuid
-from app.models.recruiter import Recruiter
-from app.services.auth_service import get_current_active_recruiter
+from app.models.user import User
+from app.services.auth_service import get_current_active_user
 
-async def override_get_current_active_recruiter():
-    return Recruiter(id=uuid.UUID('00000000-0000-0000-0000-000000000000'), email="test@test.com", is_active=True)
+async def override_get_current_active_user():
+    return User(id=uuid.UUID('00000000-0000-0000-0000-000000000000'), email="test@test.com", is_active=True, hashed_password="test")
 
 @pytest.fixture(autouse=True)
 def setup_overrides():
-    app.dependency_overrides[get_current_active_recruiter] = override_get_current_active_recruiter
+    app.dependency_overrides[get_current_active_user] = override_get_current_active_user
     yield
     app.dependency_overrides.clear()
 

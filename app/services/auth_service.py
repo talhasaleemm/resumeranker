@@ -12,7 +12,7 @@ from sqlalchemy.future import select
 
 from app.config import get_settings
 from app.database import get_db
-from app.models.recruiter import Recruiter
+from app.models.user import User
 from app.schemas.auth import TokenData
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
@@ -38,14 +38,14 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     encoded_jwt = jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
     return encoded_jwt
 
-async def get_user_by_email(session: AsyncSession, email: str) -> Optional[Recruiter]:
-    result = await session.execute(select(Recruiter).where(Recruiter.email == email))
+async def get_user_by_email(session: AsyncSession, email: str) -> Optional[User]:
+    result = await session.execute(select(User).where(User.email == email))
     return result.scalars().first()
 
 async def get_current_user(
     token: str = Depends(oauth2_scheme), 
     session: AsyncSession = Depends(get_db)
-) -> Recruiter:
+) -> User:
     settings = get_settings()
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -66,7 +66,7 @@ async def get_current_user(
         raise credentials_exception
     return user
 
-async def get_current_active_recruiter(current_user: Recruiter = Depends(get_current_user)) -> Recruiter:
+async def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
     if not current_user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user

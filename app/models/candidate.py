@@ -31,6 +31,9 @@ class Candidate(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     recruiter_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("recruiters.id", ondelete="CASCADE"), nullable=False
     )
@@ -67,6 +70,9 @@ class Candidate(Base):
     )
 
     # Relationships
+    owner: Mapped["User"] = relationship(  # type: ignore[name-defined]
+        "User", back_populates="candidates"
+    )
     recruiter: Mapped["Recruiter"] = relationship(  # type: ignore[name-defined]
         "Recruiter", back_populates="candidates"
     )

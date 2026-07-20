@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     # spaCy
     spacy_model: str = "en_core_web_sm"
 
+    # Local development demo recruiter (non-production only, opt-in)
+    dev_seed_demo_recruiter: bool = False
+    dev_demo_recruiter_email: str = "demo@resumeranker.local"
+    dev_demo_recruiter_password: str = "demo1234"
+
     # Matching weights (must sum to 1.0)
     tfidf_weight: float = 0.3
     bm25_weight: float = 0.3
