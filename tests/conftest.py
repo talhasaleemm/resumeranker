@@ -1,7 +1,7 @@
 import os
 import pytest
 
-os.environ["DATABASE_URL"] = "postgresql+asyncpg://resumeranker:devpassword123@127.0.0.1:5432/resumeranker"
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://resumeranker:devpassword123@127.0.0.1:5432/resumeranker")
 
 from app.worker import celery_app
 
