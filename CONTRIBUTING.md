@@ -1,12 +1,10 @@
 # Contributing to ResumeRanker
 
-Thank you for your interest in improving ResumeRanker! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to ResumeRanker! This document provides guidelines and instructions for contributing.
 
 ## Code of Conduct
 
-- Be respectful and constructive
-- Welcome newcomers
-- Focus on what is best for the community
+By participating in this project, you agree to abide by the [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## How to Contribute
 
@@ -27,8 +25,6 @@ Thank you for your interest in improving ResumeRanker! This document provides gu
 2. Make your changes with clear, descriptive commit messages
 3. Ensure all tests pass locally:
    ```bash
-   pip install -r requirements.txt
-   python -m spacy download en_core_web_sm
    pytest tests/ -v
    ```
 4. Update documentation if needed
@@ -46,6 +42,8 @@ Thank you for your interest in improving ResumeRanker! This document provides gu
 ### Backend Setup
 
 ```bash
+git clone https://github.com/talhasaleemm/resumeranker.git
+cd resumeranker
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
@@ -76,14 +74,18 @@ docker compose up --build
 ├── app/                    # FastAPI backend
 │   ├── api/v1/            # REST endpoints
 │   ├── models/            # SQLAlchemy ORM models
-│   ├── services/          # Business logic
+│   ├── schemas/           # Pydantic schemas
+│   ├── services/          # Business logic (parsing, matching, encryption)
 │   └── worker.py          # Celery task definitions
 ├── frontend/              # Next.js frontend
 ├── tests/                 # pytest test suite
 ├── docs/                  # Documentation and assets
+│   └── assets/            # Images, videos, media
 ├── scripts/               # Utility scripts
 ├── data/                  # Runtime data (uploads, etc.)
-└── docker-compose.yml     # Container orchestration
+├── alembic/               # Database migrations
+├── docker-compose.yml     # Container orchestration
+└── render.yaml            # Render deployment blueprint
 ```
 
 ## Style Guide

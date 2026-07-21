@@ -2,67 +2,77 @@
 
 [![CI](https://github.com/talhasaleemm/resumeranker/actions/workflows/ci.yml/badge.svg)](https://github.com/talhasaleemm/resumeranker/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%2B-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![pgvector](https://img.shields.io/badge/pgvector-0.3%2B-3386E4?logo=postgres&logoColor=white)](https://github.com/pgvector/pgvector)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-16%2B-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
 
-**AI Resume Parser and Candidate Matching Platform**
+**AI-powered ATS and Resume Ranker** — parse resumes, extract structured profiles with NLP, and rank candidates against job descriptions using TF-IDF, BM25, and semantic vector embeddings.
 
-## Demo Video
+## Key Features
 
-<p align="center">
-  <a href="https://youtu.be/at2hEwCKkE8"><img src="https://img.shields.io/badge/Watch-Demo-red?style=for-the-badge&logo=youtube" alt="Watch Demo"/></a>
-</p>
-
-ResumeRanker is a production-ready, AI-powered backend service designed to automate the extraction of candidate information and rank applicants against job descriptions. Built for scale and accuracy, the platform utilizes advanced NLP and information retrieval algorithms to streamline technical recruitment.
-
-## Features
-
-- **AI Resume Parsing**: Extracts skills, experience, education, and contact info from PDF/DOCX resumes using spaCy NER
-- **Multi-Algorithm Matching**: Combines TF-IDF, BM25, skill overlap, and semantic vector search for accurate candidate ranking
-- **Explainable Scores**: Transparent match breakdown with per-candidate contribution analysis
+- **Semantic Matching**: Combines TF-IDF, BM25, skill overlap, and cosine similarity on 384-dim vector embeddings via `all-MiniLM-L6-v2`
+- **NLP-Powered Parsing**: Extracts skills, experience, education, and contact info from PDF/DOCX resumes using spaCy NER + PyMuPDF/pdfplumber
+- **Explainable Scores**: Transparent match breakdown with per-candidate contribution analysis and weights audit log
 - **Async Processing**: Celery + Redis for non-blocking ingestion and matching pipelines
 - **Secure by Design**: Argon2 password hashing, JWT auth, Fernet encryption for PII, blind indexes for searchable email hashing
 - **Rate Limited**: SlowAPI-powered rate limiting on all public endpoints
 - **Docker First**: Full containerized stack with Docker Compose for one-command local dev
+- **Production Ready**: Render deploy blueprint, Alembic migrations, pip-audit security scanning
 
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Backend | FastAPI (Python 3.12) |
-| Database | PostgreSQL 16 + pgvector |
-| NLP | spaCy (en_core_web_sm) |
-| Matching | scikit-learn TF-IDF, rank-bm25, SentenceTransformers |
-| Task Queue | Celery + Redis |
-| Frontend | Next.js 16, Tailwind CSS |
-| Infrastructure | Docker, Docker Compose, Render |
-
-## Project Structure
+## Architecture Overview
 
 ```
-├── app/                    # FastAPI backend
-│   ├── api/v1/            # REST endpoints
-│   ├── models/            # SQLAlchemy ORM models
-│   ├── schemas/           # Pydantic schemas
-│   ├── services/          # Business logic (parsing, matching, encryption)
-│   └── worker.py          # Celery task definitions
-├── frontend/              # Next.js frontend
-├── tests/                 # pytest test suite
-├── docs/                  # Documentation and assets
-│   └── assets/            # Images, videos, media
-├── scripts/               # Utility scripts
-├── data/                  # Runtime data (uploads, etc.)
-├── alembic/               # Database migrations
-├── docker-compose.yml     # Container orchestration
-└── render.yaml            # Render deployment blueprint
+┌─────────────┐      HTTPS       ┌───────────────────────────────────────────┐
+│   Browser   │ ───────────────► │  Next.js Frontend (Port 3000)             │
+│             │                  │  - Resume upload UI                       │
+└─────────────┘                  │  - Job management dashboard               │
+                                 │  - Match results with expandable cards    │
+                                 └───────────────────────────────────────────┘
+                                            │
+                                            │ REST API (JSON/JWT)
+                                            ▼
+                                 ┌───────────────────────────────────────────┐
+                                 │  FastAPI Backend (Port 8000)              │
+                                 │  - /api/v1/auth      (register/login)    │
+                                 │  - /api/v1/resumes   (upload/list)       │
+                                 │  - /api/v1/jobs      (CRUD)              │
+                                 │  - /api/v1/matches   (async scoring)     │
+                                 │  - /api/v1/tasks/{id} (poll Celery)      │
+                                 └───────────────────────────────────────────┘
+                                            │
+                          ┌─────────────────┼─────────────────┐
+                          │                 │                 │
+                          ▼                 ▼                 ▼
+                   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+                   │  PostgreSQL  │  │    Redis    │  │   Celery    │
+                   │  + pgvector  │  │             │  │   Worker    │
+                   │  (Port 5432) │  │ (Port 6379) │  │             │
+                   │             │  │             │  │ - Parsing   │
+                   │ - Users     │  │ - Task Q    │  │ - Scoring   │
+                   │ - Candidates│  │ - Cache     │  │ - OCR       │
+                   │ - Jobs      │  │ - Rate Lim  │  │             │
+                   │ - Matches   │  │             │  │             │
+                   │ - Embeddings│  │             │  │             │
+                   └─────────────┘  └─────────────┘  └─────────────┘
 ```
+
+### Data Flow
+
+1. **Upload**: Frontend sends multipart resume to `POST /api/v1/resumes/`
+2. **Parse**: Celery worker extracts text via PyMuPDF/pdfplumber, runs spaCy NER, encrypts PII, stores `Candidate` with 384-dim `embedding`
+3. **Match**: Client calls `POST /api/v1/matches/` → backend computes TF-IDF, BM25, skill overlap, and cosine similarity against job embedding → stores `MatchResult` with full `explanation_log`
 
 ## Quick Start
 
 ### Prerequisites
 
 - Python 3.12+
-- PostgreSQL 16+
+- PostgreSQL 16+ with pgvector
 - Redis 7+
-- Node.js 20+ (for frontend)
+- Node.js 20+ (frontend)
 - Docker & Docker Compose (recommended)
 
 ### Option A: Docker (Recommended)
@@ -71,16 +81,19 @@ ResumeRanker is a production-ready, AI-powered backend service designed to autom
 git clone https://github.com/talhasaleemm/resumeranker.git
 cd resumeranker
 cp .env.example .env
-# Edit .env with your settings
 docker compose up --build
 ```
 
-The API will be available at `http://localhost:8000` and the frontend at `http://localhost:3000`.
+- API: `http://localhost:8000`
+- Frontend: `http://localhost:3000`
+- API Docs: `http://localhost:8000/docs`
 
 ### Option B: Local Development
 
 ```bash
 # Backend
+git clone https://github.com/talhasaleemm/resumeranker.git
+cd resumeranker
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
@@ -89,7 +102,7 @@ cp .env.example .env
 alembic upgrade head
 uvicorn app.main:app --reload
 
-# Frontend (in another terminal)
+# Frontend (separate terminal)
 cd frontend
 npm install
 npm run dev
@@ -97,16 +110,26 @@ npm run dev
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql+asyncpg://resumeranker:devpassword123@db:5432/resumeranker` |
-| `REDIS_URL` | Redis connection string | `redis://redis:6379/0` |
-| `JWT_SECRET_KEY` | Secret for JWT signing | *(required in production)* |
-| `ENCRYPTION_KEY` | Fernet key for PII encryption | *(required in production)* |
-| `BLIND_INDEX_KEY` | Salt for blind index hashing | *(required in production)* |
-| `DEV_SEED_DEMO_RECRUITER` | Auto-create demo user on startup | `false` |
-| `DEV_DEMO_RECRUITER_EMAIL` | Demo user email | `demo@resumeranker.local` |
-| `DEV_DEMO_RECRUITER_PASSWORD` | Demo user password | `demo1234` |
+Create a `.env` file in the root directory:
+
+```env
+# Database
+DATABASE_URL=postgresql+asyncpg://resumeranker:devpassword123@localhost:5432/resumeranker
+
+# Redis
+REDIS_URL=redis://localhost:6379/0
+
+# Security (generate with: python -c "import secrets; print(secrets.token_urlsafe(32))")
+JWT_SECRET_KEY=your-jwt-secret-here
+ENCRYPTION_KEY=your-fernet-key-here
+BLIND_INDEX_KEY=your-blind-index-salt-here
+
+# App
+APP_ENV=development
+DEV_SEED_DEMO_RECRUITER=true
+DEV_DEMO_RECRUITER_EMAIL=demo@resumeranker.local
+DEV_DEMO_RECRUITER_PASSWORD=demo1234
+```
 
 ## API Endpoints
 
@@ -126,13 +149,53 @@ npm run dev
 
 ```bash
 # Install test dependencies
-pip install pytest pytest-asyncio httpx
+pip install pytest pytest-asyncio pytest-timeout httpx
 
 # Run all tests
 pytest tests/ -v
 
 # Run specific test file
 pytest tests/test_matching.py -v
+
+# Run with coverage
+pytest tests/ -v --cov=app --cov-report=term-missing
+```
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | Next.js 16, Tailwind CSS |
+| **Backend** | FastAPI (Python 3.12) |
+| **Database** | PostgreSQL 16 + pgvector |
+| **NLP** | spaCy (en_core_web_sm), SentenceTransformers |
+| **Matching** | scikit-learn TF-IDF, rank-bm25 |
+| **Task Queue** | Celery + Redis |
+| **Security** | Argon2, JWT, Fernet encryption |
+| **Infrastructure** | Docker, Docker Compose, Render |
+
+## Project Structure
+
+```
+├── app/                    # FastAPI backend
+│   ├── api/v1/            # REST endpoints
+│   ├── models/            # SQLAlchemy ORM models
+│   ├── schemas/           # Pydantic schemas
+│   ├── services/          # Business logic (parsing, matching, encryption)
+│   ├── migrations/        # Alembic database migrations
+│   └── worker.py          # Celery task definitions
+├── frontend/              # Next.js frontend
+├── tests/                 # pytest test suite
+├── docs/                  # Documentation and assets
+│   └── assets/            # Images, videos, media
+├── scripts/               # Utility scripts
+├── data/                  # Runtime data (uploads, etc.)
+├── alembic.ini            # Alembic config (DB URL loaded from env)
+├── docker-compose.yml     # Container orchestration
+├── Dockerfile             # Backend container definition
+├── render.yaml            # Render deployment blueprint
+├── requirements.txt       # Python dependencies
+└── pytest.ini             # pytest configuration
 ```
 
 ## Contributing
