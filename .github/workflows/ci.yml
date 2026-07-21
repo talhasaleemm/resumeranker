@@ -65,11 +65,27 @@ jobs:
           sleep 10
         done
 
+    - name: Verify settings
+      run: |
+        python -c "
+        import os
+        print('DATABASE_URL:', os.environ.get('DATABASE_URL', 'NOT SET'))
+        print('REDIS_URL:', os.environ.get('REDIS_URL', 'NOT SET'))
+        print('APP_ENV:', os.environ.get('APP_ENV', 'NOT SET'))
+        print('ENCRYPTION_KEY set:', bool(os.environ.get('ENCRYPTION_KEY')))
+        print('JWT_SECRET_KEY set:', bool(os.environ.get('JWT_SECRET_KEY')))
+        from app.config import get_settings
+        s = get_settings()
+        print('Settings DB URL:', s.database_url)
+        print('Settings Redis URL:', s.redis_url)
+        print('Settings App Env:', s.app_env)
+        "
+
     - name: CI sanity check (fast test)
       run: pytest tests/test_rate_limiting.py -v --timeout=180 -x
 
     - name: Run tests with pytest
-      run: pytest tests/ -v --timeout=180
+      run: pytest tests/ -v --timeout=180 --tb=long 2>&1 | tee pytest-output.txt
 
     - name: Run pip-audit
       run: |
