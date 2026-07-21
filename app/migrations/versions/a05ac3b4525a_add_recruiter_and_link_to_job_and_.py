@@ -45,16 +45,21 @@ def upgrade() -> None:
     op.add_column('jobs', sa.Column('recruiter_id', sa.UUID(), nullable=True))
     op.create_foreign_key('fk_jobs_recruiter_id', 'jobs', 'recruiters', ['recruiter_id'], ['id'], ondelete='CASCADE')
 
-    # 2. Insert default recruiter
+    # 2. Insert default recruiter and matching user
     import uuid
     from datetime import datetime, timezone
     system_recruiter_id = uuid.UUID('00000000-0000-0000-0000-000000000000')
+    system_user_id = uuid.UUID('00000000-0000-0000-0000-000000000001')
     # Dummy argon2 hash for password 'system'
     dummy_hash = "!"
     now = datetime.now(timezone.utc)
     op.execute(
         f"INSERT INTO recruiters (id, email, hashed_password, is_active, created_at, updated_at) "
         f"VALUES ('{system_recruiter_id}', 'system@resumeranker.local', '{dummy_hash}', false, '{now}', '{now}')"
+    )
+    op.execute(
+        f"INSERT INTO users (id, email, hashed_password, is_active, created_at, updated_at) "
+        f"VALUES ('{system_user_id}', 'system@resumeranker.local', '{dummy_hash}', false, '{now}', '{now}')"
     )
 
     # 3. Update existing records

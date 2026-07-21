@@ -10,7 +10,7 @@ from app.main import app
 async def override_get_db():
     settings = get_settings()
     engine = create_async_engine(settings.database_url, poolclass=NullPool)
-    TestingSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    TestingSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
     async with TestingSessionLocal() as session:
         yield session
     await engine.dispose()

@@ -1,13 +1,18 @@
+import os
 import pytest
+
+os.environ["DATABASE_URL"] = "postgresql+asyncpg://resumeranker:devpassword123@127.0.0.1:5432/resumeranker"
+
 from app.worker import celery_app
 
 @pytest.fixture(scope="session", autouse=True)
 def configure_celery_eager():
-    """
-    Enables synchronous/eager execution of Celery tasks during tests.
-    This guarantees that tasks triggered by endpoints (like matches or resume parsing)
-    run in-process and finish execution before API responses are asserted.
-    """
     celery_app.conf.task_always_eager = True
     celery_app.conf.task_eager_propagates = True
     celery_app.conf.task_store_eager_result = True
+    celery_app.conf.result_backend = "cache+memory://"
+
+@pytest.fixture(scope="session", autouse=True)
+def preload_embedding_model():
+    from app.services.embedding import get_embedding_service
+    get_embedding_service()

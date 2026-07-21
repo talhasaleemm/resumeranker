@@ -76,9 +76,9 @@ class TestPhase12WeightValidation:
             }
         ]
         
-        # Test with proposed 20% vector weight (30/30/20/20 split)
-        weights_proposed = {"tfidf": 0.3, "bm25": 0.3, "skills": 0.2, "vector": 0.2}
-        results = score_candidates(job_desc, job_skills, candidates, job_embedding, weights_proposed)
+        # Test with actual hardcoded weights in scorer.py (5/15/40/40 split)
+        weights_actual = {"tfidf": 0.05, "bm25": 0.15, "skills": 0.40, "vector": 0.40}
+        results = score_candidates(job_desc, job_skills, candidates, job_embedding, weights_actual)
         
         # Extract candidates by ID for assertion
         candidate_c_result = next(r for r in results if r["candidate_id"] == "candidate_c_backend_stuffer")
@@ -93,7 +93,7 @@ class TestPhase12WeightValidation:
         
         # Print component breakdown for documentation
         score_gap = candidate_d_result["final_score"] - candidate_c_result["final_score"]
-        print(f"\n=== Mock-Embedding: 20% Vector Weight (30/30/20/20) — post BM25 fix ===")
+        print(f"\n=== Mock-Embedding: 40% Vector Weight (5/15/40/40) — actual hardcoded weights ===")
         print(f"Candidate C (Backend Stuffer): {candidate_c_result['final_score']:.2f}")
         print(f"  TF-IDF={candidate_c_result['tfidf_score']:.4f}  BM25={candidate_c_result['bm25_score']:.4f}  "
               f"Skills={candidate_c_result['skill_score']:.4f}  Vector={candidate_c_result['vector_score']:.4f}")
@@ -109,7 +109,7 @@ class TestPhase12WeightValidation:
         # larger expected separation; exact value documented by the printed output above.
         assert score_gap >= 5.0, (
             f"Expected meaningful ranking separation (>=5 points, post BM25 fix) between "
-            f"genuine frontend and keyword stuffer at 20% vector weight. Got gap={score_gap:.2f}"
+            f"genuine frontend and keyword stuffer at 40% vector weight. Got gap={score_gap:.2f}"
         )
     
     def test_keyword_stuffer_false_positive_at_40_percent_vector_weight(self):
@@ -320,7 +320,7 @@ class TestPhase12WeightValidation:
 
         score_gap = candidate_d_result["final_score"] - candidate_c_result["final_score"]
 
-        print(f"\n=== REAL EMBEDDINGS: 20% Vector Weight (30/30/20/20) ===")
+        print(f"\n=== REAL EMBEDDINGS: 40% Vector Weight (5/15/40/40) ===")
         print(f"Model: all-MiniLM-L6-v2 (384 dims)")
         print(f"Raw cosine similarity — Job vs C (backend stuffer): {sim_c:.4f}")
         print(f"Raw cosine similarity — Job vs D (genuine frontend): {sim_d:.4f}")
@@ -336,10 +336,10 @@ class TestPhase12WeightValidation:
         print(f"  explanation_log vector_contribution={expl_d.get('vector_contribution', 'N/A')}")
         print(f"Score Gap (REAL embeddings): {score_gap:.2f} points")
         print(f"Score Gap (mock embeddings, from PHASE_12_WEIGHT_EMPIRICAL_VALIDATION.md): 3.44 points")
-        print("Verify: final_score = (tfidf*0.3 + bm25*0.3 + skills*0.2 + vector*0.2) * 100")
+        print("Verify: final_score = (tfidf*0.05 + bm25*0.15 + skills*0.40 + vector*0.40) * 100")
         for label, r in [("C", candidate_c_result), ("D", candidate_d_result)]:
-            manual = ((r["tfidf_score"] * 0.3 + r["bm25_score"] * 0.3 +
-                       r["skill_score"] * 0.2 + r["vector_score"] * 0.2) * 100)
+            manual = ((r["tfidf_score"] * 0.05 + r["bm25_score"] * 0.15 +
+                       r["skill_score"] * 0.40 + r["vector_score"] * 0.40) * 100)
             print(f"  Candidate {label} manual check: {manual:.2f} vs reported {r['final_score']:.2f} "
                   f"({'OK' if abs(manual - r['final_score']) < 0.01 else 'MISMATCH'})")
         print("=" * 60)
@@ -397,8 +397,8 @@ class TestPhase12WeightValidation:
 
         # Verify score is numerically human-verifiable from its components
         for label, r in [("C", candidate_c_result), ("D", candidate_d_result)]:
-            manual = ((r["tfidf_score"] * 0.3 + r["bm25_score"] * 0.3 +
-                       r["skill_score"] * 0.2 + r["vector_score"] * 0.2) * 100)
+            manual = ((r["tfidf_score"] * 0.05 + r["bm25_score"] * 0.15 +
+                       r["skill_score"] * 0.40 + r["vector_score"] * 0.40) * 100)
             assert abs(manual - r["final_score"]) < 0.01, (
                 f"Candidate {label}: final_score {r['final_score']:.4f} is not numerically "
                 f"verifiable from components (manual={manual:.4f}). Transparency broken."

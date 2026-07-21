@@ -7,6 +7,7 @@ of the test suite.
 """
 import time
 import uuid
+import pytest
 
 from fastapi import FastAPI, Request, Body
 from fastapi.testclient import TestClient
@@ -119,6 +120,7 @@ def test_match_rate_limit_triggers_429():
     assert "Retry-After" in resp.headers
 
 
+@pytest.mark.timeout(90)
 def test_rate_limit_resets_after_window():
     app, limiter = _create_test_app()
     limiter.reset()

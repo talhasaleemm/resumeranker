@@ -14,11 +14,13 @@ from app.services.encryption import encrypt_text, encrypt_json, compute_blind_in
 
 
 async def ingest_candidate(
-    db: AsyncSession, raw_text: str, owner_id: str, filename: str = "unknown"
+    db: AsyncSession, raw_text: str, owner_id: str, filename: str = "unknown", recruiter_id: str | None = None
 ) -> Candidate:
     """
     Parses a resume and persists it to the database with dedup logic.
     """
+    if recruiter_id is None:
+        recruiter_id = "00000000-0000-0000-0000-000000000000"
     raw_text_hash = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
     profile = parse_resume(raw_text, filename=filename)
 
@@ -65,6 +67,7 @@ async def ingest_candidate(
         # Insert new candidate
         candidate = Candidate(
             owner_id=owner_id,
+            recruiter_id=recruiter_id,
             email_hash=email_hash,
             email_encrypted=encrypt_text(email) if email else None,
             raw_text_hash=raw_text_hash,

@@ -4,16 +4,18 @@ import os
 import json
 from cryptography.fernet import Fernet
 
+from app.config import get_settings
+
 def get_encryption_key() -> bytes:
-    key = os.environ.get("ENCRYPTION_KEY")
+    key = get_settings().ENCRYPTION_KEY
     if not key:
-        raise ValueError("ENCRYPTION_KEY is not set in environment")
+        raise ValueError("ENCRYPTION_KEY is not set")
     return key.encode("utf-8")
 
 def get_blind_index_key() -> bytes:
-    key = os.environ.get("BLIND_INDEX_KEY")
+    key = get_settings().BLIND_INDEX_KEY
     if not key:
-        raise ValueError("BLIND_INDEX_KEY is not set in environment")
+        raise ValueError("BLIND_INDEX_KEY is not set")
     return key.encode("utf-8")
 
 def encrypt_text(plaintext: str | None) -> str | None:
