@@ -22,41 +22,81 @@
 - **Docker First**: Full containerized stack with Docker Compose for one-command local dev
 - **Production Ready**: Render deploy blueprint, Alembic migrations, pip-audit security scanning
 
-## Architecture Overview
+## Architecture Framework
 
+### End-to-End Pipeline (Steps 1-6)
+
+```mermaid
+flowchart LR
+    subgraph S1["1. Document Input"]
+        A1[📄 Resume Upload<br>FastAPI POST /api/v1/resumes/]
+        A2[📝 Job Posting<br>FastAPI POST /api/v1/jobs/]
+    end
+
+    subgraph S2["2. Data Extraction"]
+        B1[🔍 PDF/DOCX Parser<br>PyMuPDF + pdfplumber]
+        B2[🧠 NLP Pipeline<br>spaCy NER en_core_web_sm]
+        B3[🔐 PII Encryption<br>Fernet + Blind Index]
+    end
+
+    subgraph S3["3. Structured Storage"]
+        C1[👤 Candidate Record<br>PostgreSQL + pgvector]
+        C2[💼 Job Record<br>PostgreSQL + pgvector]
+    end
+
+    subgraph S4["4. Vector Generation [VERIFIED]"]
+        D1[⚡ SentenceTransformer<br>all-MiniLM-L6-v2]
+        D2[📐 384-dim Embedding<br>L2-normalized vector]
+    end
+
+    subgraph S5["5. Semantic Similarity Search [VERIFIED]"]
+        E1[🔎 Cosine Similarity<br>in-memory dot product]
+        E2[🗄️ pgvector Column<br>Vector(384) in PostgreSQL]
+    end
+
+    subgraph S6["6. Final Leaderboard"]
+        F1[📊 Weighted Fusion<br>TF-IDF 5% + BM25 15%<br>Skills 40% + Vector 40%]
+        F2[🏆 Ranked Results<br>Next.js Dashboard]
+    end
+
+    S1 --> S2 --> S3 --> S4 --> S5 --> S6
 ```
-┌─────────────┐      HTTPS       ┌───────────────────────────────────────────┐
-│   Browser   │ ───────────────► │  Next.js Frontend (Port 3000)             │
-│             │                  │  - Resume upload UI                       │
-└─────────────┘                  │  - Job management dashboard               │
-                                 │  - Match results with expandable cards    │
-                                 └───────────────────────────────────────────┘
-                                            │
-                                            │ REST API (JSON/JWT)
-                                            ▼
-                                 ┌───────────────────────────────────────────┐
-                                 │  FastAPI Backend (Port 8000)              │
-                                 │  - /api/v1/auth      (register/login)    │
-                                 │  - /api/v1/resumes   (upload/list)       │
-                                 │  - /api/v1/jobs      (CRUD)              │
-                                 │  - /api/v1/matches   (async scoring)     │
-                                 │  - /api/v1/tasks/{id} (poll Celery)      │
-                                 └───────────────────────────────────────────┘
-                                            │
-                          ┌─────────────────┼─────────────────┐
-                          │                 │                 │
-                          ▼                 ▼                 ▼
-                   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-                   │  PostgreSQL  │  │    Redis    │  │   Celery    │
-                   │  + pgvector  │  │             │  │   Worker    │
-                   │  (Port 5432) │  │ (Port 6379) │  │             │
-                   │             │  │             │  │ - Parsing   │
-                   │ - Users     │  │ - Task Q    │  │ - Scoring   │
-                   │ - Candidates│  │ - Cache     │  │ - OCR       │
-                   │ - Jobs      │  │ - Rate Lim  │  │             │
-                   │ - Matches   │  │             │  │             │
-                   │ - Embeddings│  │             │  │             │
-                   └─────────────┘  └─────────────┘  └─────────────┘
+
+### Resume-to-Job Matching Engine Deep Dive
+
+```mermaid
+flowchart LR
+    subgraph A["A. Pre-computation: Embed & Index"]
+        A1[Resume Text] --> A2[all-MiniLM-L6-v2<br>SentenceTransformer]
+        A2 --> A3[384-dim Vector]
+        A3 --> A4[Store in candidates.embedding<br>pgvector Vector(384)]
+    end
+
+    subgraph B["B. Target Definition"]
+        B1[Job Description] --> B2[all-MiniLM-L6-v2<br>SentenceTransformer]
+        B2 --> B3[384-dim Job Vector]
+    end
+
+    subgraph C["C. Similarity Retrieval"]
+        C1[Compute Cosine Similarity<br>dot product of L2-normalized vectors]
+        C2[Raw Score 0.0 - 1.0<br>no batch normalization]
+    end
+
+    subgraph D["D. Skills Filtering"]
+        D1[RapidFuzz WRatio<br>fuzzy skill matching >= 85]
+        D2[Hard Skills Coverage<br>required_skills intersection]
+    end
+
+    subgraph E["E. Final Ranking"]
+        E1[Weighted Combination<br>tfidf×0.05 + bm25×0.15<br>+ skills×0.40 + vector×0.40]
+        E2[Score × 100 → 0-100<br>Sort descending]
+        E3[Explanation Log<br>per-candidate breakdown]
+    end
+
+    A --> C
+    B --> C
+    C --> E
+    D --> E
 ```
 
 ### Data Flow
@@ -169,7 +209,8 @@ pytest tests/ -v --cov=app --cov-report=term-missing
 | **Backend** | FastAPI (Python 3.12) |
 | **Database** | PostgreSQL 16 + pgvector |
 | **NLP** | spaCy (en_core_web_sm), SentenceTransformers |
-| **Matching** | scikit-learn TF-IDF, rank-bm25 |
+| **Embedding Model** | `all-MiniLM-L6-v2` (384-dim, Hugging Face) |
+| **Matching** | scikit-learn TF-IDF, rank-bm25, RapidFuzz |
 | **Task Queue** | Celery + Redis |
 | **Security** | Argon2, JWT, Fernet encryption |
 | **Infrastructure** | Docker, Docker Compose, Render |
@@ -182,6 +223,8 @@ pytest tests/ -v --cov=app --cov-report=term-missing
 │   ├── models/            # SQLAlchemy ORM models
 │   ├── schemas/           # Pydantic schemas
 │   ├── services/          # Business logic (parsing, matching, encryption)
+│   │   ├── embedding.py   # SentenceTransformer service
+│   │   └── matching/      # TF-IDF, BM25, scorer pipeline
 │   ├── migrations/        # Alembic database migrations
 │   └── worker.py          # Celery task definitions
 ├── frontend/              # Next.js frontend
