@@ -17,9 +17,11 @@ async def test_persistence_new_candidate_insert():
     unique_email = f"new_test1_{uuid.uuid4()}@example.com"
     test_engine = create_async_engine(get_settings().database_url)
     async with AsyncSession(test_engine) as db:
-        c1 = await ingest_candidate(db, raw_text=f"Developer with {unique_email}", filename="res1.pdf", recruiter_id="00000000-0000-0000-0000-000000000000")
+        c1 = await ingest_candidate(db, raw_text=f"Developer with {unique_email}", filename="res1.pdf", owner_id="00000000-0000-0000-0000-000000000000")
         assert c1.id is not None
-        assert c1.email == unique_email
+        assert c1.email_encrypted is not None
+        assert unique_email not in c1.email_encrypted
+        assert c1.email_encrypted.startswith("gAAAAA")
     await test_engine.dispose()
 
 async def test_persistence_email_match_update():
@@ -29,11 +31,12 @@ async def test_persistence_email_match_update():
     unique_email = f"update_test_{uuid.uuid4()}@example.com"
     test_engine = create_async_engine(get_settings().database_url)
     async with AsyncSession(test_engine) as db:
-        c1 = await ingest_candidate(db, raw_text=f"Developer with {unique_email}", filename="res1.pdf", recruiter_id="00000000-0000-0000-0000-000000000000")
+        c1 = await ingest_candidate(db, raw_text=f"Developer with {unique_email}", filename="res1.pdf", owner_id="00000000-0000-0000-0000-000000000000")
         original_id = c1.id
-        c2 = await ingest_candidate(db, raw_text=f"Senior Developer with {unique_email}", filename="res2.pdf", recruiter_id="00000000-0000-0000-0000-000000000000")
+        c2 = await ingest_candidate(db, raw_text=f"Senior Developer with {unique_email}", filename="res2.pdf", owner_id="00000000-0000-0000-0000-000000000000")
         assert c2.id == original_id
-        assert c2.raw_text == f"Senior Developer with {unique_email}"
+        assert c2.raw_text_encrypted is not None
+        assert "Senior Developer" in c2.raw_text_encrypted
     await test_engine.dispose()
 
 async def test_persistence_raw_text_hash_fallback_match():
@@ -44,9 +47,9 @@ async def test_persistence_raw_text_hash_fallback_match():
     
     test_engine = create_async_engine(get_settings().database_url)
     async with AsyncSession(test_engine) as db:
-        c3 = await ingest_candidate(db, raw_text=unique_text, filename="res3.pdf", recruiter_id="00000000-0000-0000-0000-000000000000")
+        c3 = await ingest_candidate(db, raw_text=unique_text, filename="res3.pdf", owner_id="00000000-0000-0000-0000-000000000000")
         c3_id = c3.id
-        c4 = await ingest_candidate(db, raw_text=unique_text, filename="res4.pdf", recruiter_id="00000000-0000-0000-0000-000000000000")
+        c4 = await ingest_candidate(db, raw_text=unique_text, filename="res4.pdf", owner_id="00000000-0000-0000-0000-000000000000")
         assert c4.id == c3_id
     await test_engine.dispose()
 
@@ -83,7 +86,7 @@ async def test_persistence_concurrent_duplicate_rejection():
                     db, 
                     raw_text=f"Developer with {unique_email}", 
                     filename="res1.pdf",
-                    recruiter_id="00000000-0000-0000-0000-000000000000"
+                    owner_id="00000000-0000-0000-0000-000000000000"
                 )
                 cid = candidate.id
                 await db.commit()
@@ -128,14 +131,14 @@ async def test_match_results_append_only_in_db():
             yield session
             await session.commit()
 
-    from app.models.recruiter import Recruiter
-    async def override_get_current_active_recruiter():
+    from app.models.user import User
+    async def override_get_current_active_user():
         import uuid
-        return Recruiter(id=uuid.UUID("00000000-0000-0000-0000-000000000000"), email="test@test.com", is_active=True)
+        return User(id=uuid.UUID("00000000-0000-0000-0000-000000000000"), email="test@test.com", is_active=True, hashed_password="test")
 
     app.dependency_overrides[get_db] = override_get_db
-    from app.services.auth_service import get_current_active_recruiter
-    app.dependency_overrides[get_current_active_recruiter] = override_get_current_active_recruiter
+    from app.services.auth_service import get_current_active_user
+    app.dependency_overrides[get_current_active_user] = override_get_current_active_user
     
     try:
         # 1. Ingest candidate via Python API directly
@@ -144,7 +147,7 @@ async def test_match_results_append_only_in_db():
         import uuid
         unique_text = f"I am a persistent developer. {uuid.uuid4()}"
         async with TestingSessionLocal() as db:
-            c = await ingest_candidate(db, raw_text=unique_text, filename="cand_persist.pdf", recruiter_id="00000000-0000-0000-0000-000000000000")
+            c = await ingest_candidate(db, raw_text=unique_text, filename="cand_persist.pdf", owner_id="00000000-0000-0000-0000-000000000000")
             await db.commit()
             await db.refresh(c)
             cand_id = str(c.id)
@@ -192,7 +195,7 @@ async def test_ciphertext_at_rest():
     
     test_engine = create_async_engine(get_settings().database_url)
     async with AsyncSession(test_engine) as db:
-        c1 = await ingest_candidate(db, raw_text=unique_text, filename="cipher.pdf", recruiter_id="00000000-0000-0000-0000-000000000000")
+        c1 = await ingest_candidate(db, raw_text=unique_text, filename="cipher.pdf", owner_id="00000000-0000-0000-0000-000000000000")
         assert c1.id is not None
         
         # Query raw table columns bypassing the ORM properties
@@ -222,7 +225,7 @@ async def test_raw_text_hash_stability_across_reencryption():
     
     test_engine = create_async_engine(get_settings().database_url)
     async with AsyncSession(test_engine) as db:
-        c1 = await ingest_candidate(db, raw_text=unique_text, filename="stable1.pdf", recruiter_id="00000000-0000-0000-0000-000000000000")
+        c1 = await ingest_candidate(db, raw_text=unique_text, filename="stable1.pdf", owner_id="00000000-0000-0000-0000-000000000000")
         first_hash = c1.raw_text_hash
         
         # Bypassing ORM to get the exact raw_text_encrypted string
@@ -231,7 +234,7 @@ async def test_raw_text_hash_stability_across_reencryption():
         first_ciphertext = res1.scalar()
         
         # Re-ingest exact same candidate to trigger an update/re-encryption
-        c2 = await ingest_candidate(db, raw_text=unique_text, filename="stable2.pdf", recruiter_id="00000000-0000-0000-0000-000000000000")
+        c2 = await ingest_candidate(db, raw_text=unique_text, filename="stable2.pdf", owner_id="00000000-0000-0000-0000-000000000000")
         assert c2.id == c1.id # Dedup worked
         
         # The hash should be identical because it is computed from plaintext before encryption
