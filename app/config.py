@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     BLIND_INDEX_KEY: str = ""
     
     # JWT Authentication
-    jwt_secret_key: str
+    jwt_secret_key: str = "change-me"
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 30
 

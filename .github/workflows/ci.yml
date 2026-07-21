@@ -35,6 +35,7 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://resumeranker:devpassword123@127.0.0.1:5432/resumeranker
       ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
       BLIND_INDEX_KEY: ${{ secrets.BLIND_INDEX_KEY }}
+      JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
 
     steps:
     - uses: actions/checkout@v4
