@@ -15,12 +15,12 @@ jobs:
         image: pgvector/pgvector:pg16
         env:
           POSTGRES_DB: resumeranker
-          POSTGRES_USER: resumeranker
+          POSTGRES_USER: postgres
           POSTGRES_PASSWORD: devpassword123
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U resumeranker -d resumeranker"
+          --health-cmd "pg_isready -U postgres -d resumeranker"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -30,9 +30,9 @@ jobs:
       POSTGRES_HOST: 127.0.0.1
       POSTGRES_PORT: 5432
       POSTGRES_DB: resumeranker
-      POSTGRES_USER: resumeranker
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: devpassword123
-      DATABASE_URL: postgresql+asyncpg://resumeranker:devpassword123@127.0.0.1:5432/resumeranker
+      DATABASE_URL: postgresql+asyncpg://postgres:devpassword123@127.0.0.1:5432/resumeranker
       ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
       BLIND_INDEX_KEY: ${{ secrets.BLIND_INDEX_KEY }}
       JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
