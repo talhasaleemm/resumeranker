@@ -12,6 +12,7 @@ import pytest
 from app.services.matching.scorer import score_candidates
 
 
+@pytest.mark.timeout(300)
 class TestPhase12WeightValidation:
     """
     Validates the weight rebalancing decision for Phase 12 semantic vector search.

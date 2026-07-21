@@ -3,6 +3,9 @@ import pytest
 
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://resumeranker:devpassword123@127.0.0.1:5432/resumeranker")
 
+from app.config import get_settings
+get_settings.cache_clear()
+
 from app.worker import celery_app
 
 @pytest.fixture(scope="session", autouse=True)
@@ -14,5 +17,8 @@ def configure_celery_eager():
 
 @pytest.fixture(scope="session", autouse=True)
 def preload_embedding_model():
-    from app.services.embedding import get_embedding_service
-    get_embedding_service()
+    try:
+        from app.services.embedding import get_embedding_service
+        get_embedding_service()
+    except Exception as exc:
+        pytest.fail(f"Failed to preload embedding model: {exc}")

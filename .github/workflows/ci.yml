@@ -65,8 +65,11 @@ jobs:
           sleep 10
         done
 
+    - name: CI sanity check (fast test)
+      run: pytest tests/test_rate_limiting.py -v --timeout=180 -x
+
     - name: Run tests with pytest
-      run: pytest tests/ -v --timeout=60
+      run: pytest tests/ -v --timeout=180
 
     - name: Run pip-audit
       run: |

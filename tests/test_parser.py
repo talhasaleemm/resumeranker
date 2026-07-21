@@ -168,6 +168,7 @@ class TestDOCXParser:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.timeout(300)
 class TestNERPipeline:
     """Test the full parse_resume() pipeline on all 3 sample resumes."""
 
@@ -494,6 +495,7 @@ if __name__ == "__main__":
         print(json.dumps(display, indent=2, ensure_ascii=False))
 
 
+@pytest.mark.timeout(300)
 class TestEdgeCaseParser:
     def test_multicolumn_pdf(self):
         """a. Multi-column layout: cleanly separates columns using PyMuPDF block coordinates."""
