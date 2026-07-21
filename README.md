@@ -26,78 +26,35 @@
 
 ### End-to-End Pipeline (Steps 1-6)
 
-```mermaid
-flowchart LR
-    subgraph S1["1. Document Input"]
-        A1[📄 Resume Upload<br>FastAPI POST /api/v1/resumes/]
-        A2[📝 Job Posting<br>FastAPI POST /api/v1/jobs/]
-    end
+![ResumeRanker Architecture](docs/assets/ResumeRanker.png)
 
-    subgraph S2["2. Data Extraction"]
-        B1[🔍 PDF/DOCX Parser<br>PyMuPDF + pdfplumber]
-        B2[🧠 NLP Pipeline<br>spaCy NER en_core_web_sm]
-        B3[🔐 PII Encryption<br>Fernet + Blind Index]
-    end
-
-    subgraph S3["3. Structured Storage"]
-        C1[👤 Candidate Record<br>PostgreSQL + pgvector]
-        C2[💼 Job Record<br>PostgreSQL + pgvector]
-    end
-
-    subgraph S4["4. Vector Generation [VERIFIED]"]
-        D1[⚡ SentenceTransformer<br>all-MiniLM-L6-v2]
-        D2[📐 384-dim Embedding<br>L2-normalized vector]
-    end
-
-    subgraph S5["5. Semantic Similarity Search [VERIFIED]"]
-        E1[🔎 Cosine Similarity<br>in-memory dot product]
-        E2[🗄️ pgvector Column<br>Vector(384) in PostgreSQL]
-    end
-
-    subgraph S6["6. Final Leaderboard"]
-        F1[📊 Weighted Fusion<br>TF-IDF 5% + BM25 15%<br>Skills 40% + Vector 40%]
-        F2[🏆 Ranked Results<br>Next.js Dashboard]
-    end
-
-    S1 --> S2 --> S3 --> S4 --> S5 --> S6
-```
+*Figure: End-to-end pipeline from document input through final leaderboard.*
 
 ### Resume-to-Job Matching Engine Deep Dive
 
-```mermaid
-flowchart LR
-    subgraph A["A. Pre-computation: Embed & Index"]
-        A1[Resume Text] --> A2[all-MiniLM-L6-v2<br>SentenceTransformer]
-        A2 --> A3[384-dim Vector]
-        A3 --> A4[Store in candidates.embedding<br>pgvector Vector(384)]
-    end
+The matching engine operates in five distinct phases:
 
-    subgraph B["B. Target Definition"]
-        B1[Job Description] --> B2[all-MiniLM-L6-v2<br>SentenceTransformer]
-        B2 --> B3[384-dim Job Vector]
-    end
+#### A. Pre-computation: Embed & Index
+- Resume text is passed through `all-MiniLM-L6-v2` (SentenceTransformer)
+- Generates 384-dim L2-normalized vector embeddings
+- Stored in `candidates.embedding` column (`pgvector Vector(384)`)
 
-    subgraph C["C. Similarity Retrieval"]
-        C1[Compute Cosine Similarity<br>dot product of L2-normalized vectors]
-        C2[Raw Score 0.0 - 1.0<br>no batch normalization]
-    end
+#### B. Target Definition
+- Job description is embedded using the same `all-MiniLM-L6-v2` model
+- Produces a 384-dim job vector for similarity comparison
 
-    subgraph D["D. Skills Filtering"]
-        D1[RapidFuzz WRatio<br>fuzzy skill matching >= 85]
-        D2[Hard Skills Coverage<br>required_skills intersection]
-    end
+#### C. Similarity Retrieval
+- Cosine similarity computed via dot product of L2-normalized vectors
+- Raw scores range from 0.0 to 1.0 (no batch normalization applied)
 
-    subgraph E["E. Final Ranking"]
-        E1[Weighted Combination<br>tfidf×0.05 + bm25×0.15<br>+ skills×0.40 + vector×0.40]
-        E2[Score × 100 → 0-100<br>Sort descending]
-        E3[Explanation Log<br>per-candidate breakdown]
-    end
+#### D. Skills Filtering
+- RapidFuzz WRatio fuzzy matching with threshold ≥ 85
+- Intersection of required vs candidate skills
 
-    A --> C
-    B --> C
-    C --> E
-    D --> E
-```
+#### E. Final Ranking
+- Weighted combination: `tfidf×0.05 + bm25×0.15 + skills×0.40 + vector×0.40`
+- Scaled to 0-100, sorted descending
+- Full explanation log with per-candidate breakdown
 
 ### Data Flow
 
