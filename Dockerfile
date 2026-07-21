@@ -23,10 +23,15 @@ COPY requirements.txt .
 RUN pip install --upgrade pip && \
     pip install --prefix=/install --no-cache-dir -r requirements.txt
 
-# Bake spaCy model into the image — avoids runtime network calls in prod
+# Bake spaCy model into the image — avoids runtime network calls in prod.
+# CRITICAL: set PIP_PREFIX=/install so `spacy download` installs the model
+# into the same /install prefix that is later COPYed into the runtime stage.
+# (Without PIP_PREFIX, the model lands in the builder base's site-packages
+# and is lost at COPY time.)
 ARG SPACY_MODEL=en_core_web_sm
-RUN PYTHONPATH=/install/lib/python3.12/site-packages \
-    /install/bin/python -m spacy download ${SPACY_MODEL}
+RUN PIP_PREFIX=/install \
+    PYTHONPATH=/install/lib/python3.12/site-packages \
+    python3 -m spacy download ${SPACY_MODEL}
 
 # ------- Stage 2: runtime — minimal attack surface -------
 FROM python:3.12-slim AS runtime
