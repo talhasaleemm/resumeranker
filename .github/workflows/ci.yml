@@ -58,7 +58,12 @@ jobs:
         python -m spacy download en_core_web_sm
 
     - name: Run Alembic migrations
-      run: alembic upgrade head
+      run: |
+        for i in 1 2 3 4 5; do
+          alembic upgrade head --verbose && break
+          echo "Alembic migration attempt $i failed, retrying in 10s..."
+          sleep 10
+        done
 
     - name: Run tests with pytest
       run: pytest tests/ -v --timeout=60
