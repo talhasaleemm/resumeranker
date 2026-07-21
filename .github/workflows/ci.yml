@@ -12,7 +12,7 @@ jobs:
 
     services:
       db:
-        image: postgres:16-alpine
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_DB: resumeranker
           POSTGRES_USER: resumeranker
@@ -39,6 +39,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
 
     - name: Set up Python 3.12
       uses: actions/setup-python@v5
@@ -59,7 +61,7 @@ jobs:
       run: alembic upgrade head
 
     - name: Run tests with pytest
-      run: pytest tests/ -v
+      run: pytest tests/ -v --timeout=60
 
     - name: Run pip-audit
       run: |
