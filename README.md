@@ -7,7 +7,9 @@
 
 ## Demo Video
 
-<video src="https://raw.githubusercontent.com/talhasaleemm/resumeranker/main/docs/assets/ResumeRanker.mp4" controls width="720"></video>
+<p align="center">
+  <video src="ResumeRanker.mp4" controls width="720"></video>
+</p>
 
 ResumeRanker is a production-ready, AI-powered backend service designed to automate the extraction of candidate information and rank applicants against job descriptions. Built for scale and accuracy, the platform utilizes advanced NLP and information retrieval algorithms to streamline technical recruitment.
 

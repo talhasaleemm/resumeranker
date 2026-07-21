@@ -82,3 +82,7 @@ Desktop.ini
 git_history.txt
 req_log.txt
 requirements_pinned_audit.txt
+
+# === Media / Assets (local only, not committed) ===
+ResumeRanker.mp4
+docs/assets/

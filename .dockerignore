@@ -94,5 +94,6 @@ scripts/
 patch_*.py
 test_*.py
 
-# Media / assets (keep in repo but not in Docker build context for runtime)
+# Media / assets (local only)
+ResumeRanker.mp4
 docs/assets/
